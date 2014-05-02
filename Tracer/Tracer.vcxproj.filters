@@ -1,0 +1,136 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\cuda">
+      <UniqueIdentifier>{273039d8-0d75-4a12-9cc0-edaec7e771c0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cuda\api">
+      <UniqueIdentifier>{6d169344-fa1d-405e-bb5a-f7bdc5bc411d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="camera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="double_math.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gl_layer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="io.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="print.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texture_array.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="glTreeDebug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gl_font.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gl_globals.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="input.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gl_layer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="io.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="print.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texture_array.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gl_font.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cuda\culling.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\globals.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\lighting.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\shading.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\texturing.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\traversing.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\types.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\material.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\tracer_api.cuh">
+      <Filter>Source Files\cuda\api</Filter>
+    </None>
+    <None Include="cuda\vector_functions.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+    <None Include="cuda\geometry.cuh">
+      <Filter>Source Files\cuda</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="cuda\lighting.cu">
+      <Filter>Source Files\cuda</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda\texturing.cu">
+      <Filter>Source Files\cuda</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda\tracing.cu">
+      <Filter>Source Files\cuda</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda\shading.cu">
+      <Filter>Source Files\cuda</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda\geometry.cu">
+      <Filter>Source Files\cuda</Filter>
+    </CudaCompile>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+/assets
+/bin
+/include
+/libs
+/tmp
+*.opensdf
+*.sdf
