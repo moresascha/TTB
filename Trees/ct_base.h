@@ -18,7 +18,7 @@ struct ICTInterface
     >
     CT_RESULT QueryInterface(T** pp)
     {
-        QueryInterface(__uuidof(T), (void**)pp);
+        return QueryInterface(__uuidof(T), (void**)pp);
     }
 
     virtual CT_RESULT QueryInterface(ct_uuid id, void** ppInterface) 

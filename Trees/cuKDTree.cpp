@@ -1,8 +1,7 @@
 #include "cuKDTree.h"
 #include "ct.h"
 #include "check_state.h"
-#include "ct_geometry.h"
-
+#include "geometry.h"
 #include "ct_output.h"
 
 cuKDTree::cuKDTree(void) : m_initialized(false)
@@ -36,9 +35,15 @@ CT_RESULT cuKDTree::Update(void)
     return CT_SUCCESS;
 }
 
-ICTTreeNode* cuKDTree::GetNodesEntryPtr(void)
+ICTTreeNode* cuKDTree::GetRoot(void)
 {
     return m_node;
+}
+
+CT_RESULT cuKDTree::AddGeometry(ICTGeometry* geo)
+{
+
+    return CT_SUCCESS;
 }
 
 uint cuKDTree::GetDepth(void)
@@ -49,13 +54,6 @@ uint cuKDTree::GetDepth(void)
 uint cuKDTree::GetNodesCount(void)
 {
     return m_nodesCount;
-}
-
-CT_RESULT cuKDTree::AddGeometry(ICTGeometry* geo)
-{
-    checkState(geo->GetTopology() == m_topo);
-
-    return CT_SUCCESS;
 }
 
 CT_RESULT cuKDTree::QueryInterface(ct_uuid id, void** ppInterface)

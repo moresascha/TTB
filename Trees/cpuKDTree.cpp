@@ -97,7 +97,7 @@ float getSAH(AABB& node, int axis, float split, int primBelow, int primAbove, fl
 
         float pbelow = belowSA * invTotalSA;
         float pabove = aboveSA * invTotalSA;
-        float bonus = (primAbove == 0 || primBelow == 0) ? 1 : 0;
+        float bonus = (primAbove == 0 || primBelow == 0) ? 1.0f : 0.0f;
         cost = traversalCost + isectCost * (1.0f - bonus) * (pbelow * primBelow + pabove * primAbove);
     }
     return cost;
@@ -122,22 +122,25 @@ struct EdgeEvent
 void cpuKDTree::_CreateTree(cpuTreeNode* parent, uint depth)
 {
     //ct_printf("%d\n", address);
-    address++;
+    m_address++;
 
-    if(depth == m_depth || parent->geometry.size() < 4)
+    if(depth == m_depth || parent->primitives.size() < 4)
     {
+        m_leafNodesCount++;
         parent->isLeaf = true;
         return;
     }
-    //address++;
+
+    m_interiorNodesCount++;
 
     std::vector<EdgeEvent> events;
 
     SplitAxis axis = getLongestAxis(parent->m_aabb.GetMax() - parent->m_aabb.GetMin());
 
-    for(int i = 0; i < parent->geometry.size(); ++i)
+    for(int i = 0; i < parent->primitives.size(); ++i)
     {
-        const ICTAABB& geoAABB = geometry[parent->geometry[i]]->GetAABB();
+
+        const ICTAABB& geoAABB = primitives[parent->primitives[i]]->GetAABB();
 
         float start = getAxis(geoAABB.GetMin(), axis);
         float end = getAxis(geoAABB.GetMax(), axis);
@@ -158,7 +161,7 @@ void cpuKDTree::_CreateTree(cpuTreeNode* parent, uint depth)
     float currentBestSAH = FLT_MAX;
     float currentSplit = 0;
     int primsBelow = 0;
-    int primsAbove = parent->geometry.size();
+    int primsAbove = (int)parent->primitives.size();
 
     for(int i = 0; i < events.size(); ++i)
     {
@@ -211,30 +214,30 @@ void cpuKDTree::_CreateTree(cpuTreeNode* parent, uint depth)
     parent->right->splitAxis = (SplitAxis)-1;
     parent->isLeaf = false;
 
-    for(uint i = 0; i < parent->geometry.size(); ++i)
+    for(uint i = 0; i < parent->primitives.size(); ++i)
     {
-        ICTGeometry* geo = geometry[parent->geometry[i]];
+        const ICTPrimitive* prim = primitives[parent->primitives[i]];
         
-        float mini = getAxis(geo->GetAABB().GetMin(), axis);
-        float maxi = getAxis(geo->GetAABB().GetMax(), axis);
+        float mini = getAxis(prim->GetAABB().GetMin(), axis);
+        float maxi = getAxis(prim->GetAABB().GetMax(), axis);
 
         if(mini < currentSplit)
         {
-            parent->left->geometry.push_back(parent->geometry[i]);
+            parent->left->primitives.push_back(parent->primitives[i]);
         }
 
         if(maxi > currentSplit)
         {
-            parent->right->geometry.push_back(parent->geometry[i]);
+            parent->right->primitives.push_back(parent->primitives[i]);
         }
     }
-    parent->leftAdd = address;
+    parent->leftAdd = m_address;
     _CreateTree(parent->left, depth + 1);
-    parent->rightAdd = address;
+    parent->rightAdd = m_address;
     _CreateTree(parent->right, depth + 1);
 }
 
-void _DebugDrawNodes(cpuTreeNode* parent, ICTTreeDebugLayer* dbLayer, std::vector<ICTGeometry*> geometry)
+void _DebugDrawNodes(cpuTreeNode* parent, ICTTreeDebugLayer* dbLayer, std::vector<const ICTGeometry*> geometry)
 {
     if(parent->isLeaf)
     {
@@ -306,17 +309,46 @@ uint GenerateDepth(uint N)
     return (uint)(8.5 + 1.3 * log(N));
 }
 
-uint cpuKDTree::GetNodesCount(void)
+void cpuKDTree::OnPrimitiveMoved(const ICTPrimitive* prim)
 {
-    return (1 << m_depth) - 1;
+    uint vc;
+    const ICTVertex* const* v = prim->GetVertices(&vc);
+    for(uint j = 0; j < vc; ++j)
+    {
+        m_root->m_aabb.AddVertex(v[j]);
+    }
+}
+
+void cpuKDTree::OnGeometryMoved(const ICTGeometry* geo)
+{
+    uint pc = 0;
+    const ICTPrimitive* const* prims = geo->GetPrimitives(&pc);
+    for(uint i = 0; i < pc; ++i)
+    {
+        OnPrimitiveMoved(prims[i]);
+    }
+}
+
+uint cpuKDTree::GetInteriorNodesCount(void) const
+{
+    return m_interiorNodesCount;
+}
+
+uint cpuKDTree::GetLeafNodesCount(void) const
+{
+    return m_leafNodesCount;
 }
 
 CT_RESULT cpuKDTree::Update(void)
 {
     if(m_root)
     {
-        m_depth = min(128, max(1, (m_depth == -1 ? GenerateDepth(geometry.size()) : m_depth)));
-        address = 0;
+        m_leafNodesCount = 0;
+        m_interiorNodesCount = 0;
+        m_address = 0;
+        CT_SAFE_FREE(m_root->left);
+        CT_SAFE_FREE(m_root->right);
+        m_depth = min(128, max(1, (m_depth == -1 ? GenerateDepth((uint)geometry.size()) : m_depth)));
         _CreateTree(m_root, 0);
         return CT_SUCCESS;
     }
@@ -326,13 +358,19 @@ CT_RESULT cpuKDTree::Update(void)
 
 CT_RESULT cpuKDTree::AddGeometry(ICTGeometry* geo)
 {
-    uint vc = 0;
-    const ICTVertex** vs = geo->GetVertices(&vc);
-    for(int i = 0; i < vc; ++i)
+    uint pc = 0;
+    const ICTPrimitive* const* prims = geo->GetPrimitives(&pc);
+    for(uint i = 0; i < pc; ++i)
     {
-        m_root->m_aabb.AddVertex(vs[i]);
+        uint vc;
+        const ICTVertex* const* v = prims[i]->GetVertices(&vc);
+        for(uint j = 0; j < vc; ++j)
+        {
+            m_root->m_aabb.AddVertex(v[j]);
+        }
+        m_root->primitives.push_back((uint)m_root->primitives.size());
+        primitives.push_back(prims[i]);
     }
-    m_root->geometry.push_back(geometry.size());
     geometry.push_back(geo);
     return CT_SUCCESS;
 }

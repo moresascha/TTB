@@ -484,7 +484,7 @@ __global__ void computeInitialRays(float4* color, Ray* rays, uint* rayMask, floa
     ray = transform3f(g_view, &ray);
 
     color[id] = make_float4(0,0,0,0); //clear buffer
-      
+
     Real min = 0, max = FLT_MAX;
     
     if(!intersectP(eye, ray, BBOX_MIN, BBOX_MAX, &min, &max))

@@ -89,26 +89,57 @@ CT_RESULT CT_API CTCreateSAHKDTree(ICTTree** tree, uint flags)
     return CTCreateTree(tree, &_desc);
 }
 
-CT_RESULT CT_API CTCreateGeometry(ICTGeometry** geo)
+CT_RESULT CT_API CTCreateGeometry(ICTTree* tree, ICTGeometry** geo)
 {
-    Geometry* _geo = CTMemAllocObject<Geometry>();
-    *geo = _geo;
-    if(_geo == NULL)
+    if(tree->GetDeviceType() == eCT_CPU)
     {
-        return CT_MEMORY_ALLOC_FAILURE;
+        CT_RESULT res = CTAllocObjectRoutine<Geometry>((void**)geo);
+        if(res == CT_SUCCESS)
+        {
+            ((Geometry*)(*geo))->SetTree((cpuKDTree*)tree);
+        }
+        return res;
     }
-    return CT_SUCCESS;
+    else if(tree->GetDeviceType() == eCT_GPU)
+    {
+        return CTAllocObjectRoutine<GPUGeometry>((void**)geo);
+    }
+    else
+    {
+        return CT_INVALID_ENUM;
+    }
 }
 
-CT_RESULT CT_API CTCreateVertex(ICTVertex** v)
+CT_RESULT CT_API CTCreatePrimitive(ICTTree* tree, ICTPrimitive** prim)
 {
-    Vertex* _v = CTMemAllocObject<Vertex>();
-    *v = _v;
-    if(_v == NULL)
+    if(tree->GetDeviceType() == eCT_CPU && tree->GetTopology() == CT_TRIANGLES)
     {
-        return CT_MEMORY_ALLOC_FAILURE;
+        return CTAllocObjectRoutine<Triangle>((void**)prim);
     }
-    return CT_SUCCESS;
+    else if(tree->GetDeviceType() == eCT_GPU && tree->GetTopology() == CT_TRIANGLES)
+    {
+        return CTAllocObjectRoutine<GPUTriangle>((void**)prim);
+    }
+    else
+    {
+        return CT_INVALID_ENUM;
+    }
+}
+
+CT_RESULT CT_API CTCreateVertex(const ICTTree* tree, ICTVertex** v)
+{
+    if(tree->GetDeviceType() == eCT_CPU)
+    {
+        return CTAllocObjectRoutine<Vertex>((void**)v);
+    }
+    else if(tree->GetDeviceType() == eCT_GPU)
+    {
+        return CTAllocObjectRoutine<GPUVertex>((void**)v);
+    }
+    else
+    {
+        return CT_INVALID_ENUM;
+    }
 }
 
 CT_RESULT CT_API CTReleaseObject(ICTInterface* obj)

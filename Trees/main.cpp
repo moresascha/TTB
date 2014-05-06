@@ -31,40 +31,41 @@ int main(void)
     CT_SAFE_CALL(CTInit(CT_ENABLE_CUDA_ACCEL | CT_TREE_ENABLE_DEBUG_LAYER));
 
     ICTTree* tree;
-    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_CPU));
+    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_GPU));
+    
+    ICTGeometry* geo;
+    CT_SAFE_CALL(CTCreateGeometry(tree, &geo));
 
     for(int gc = 0; gc < 16; ++gc)
     {
-        ICTGeometry* geo;
-        CT_SAFE_CALL(CTCreateGeometry(&geo));
+        ICTPrimitive* p;
+        CT_SAFE_CALL(CTCreatePrimitive(tree, &p));
+        geo->AddPrimitive(p);
         for(int i = 0; i < 4; ++i)
         {
             ICTVertex* v;
-            CT_SAFE_CALL(CTCreateVertex(&v));
+            CT_SAFE_CALL(CTCreateVertex(tree, &v));
             ctfloat3 pos;
             pos.x = -1 + 2 * rand() / (float)RAND_MAX;
             pos.y = -1 + 2 * rand() / (float)RAND_MAX;
             pos.z = -1 + 2 * rand() / (float)RAND_MAX;
             v->SetPosition(pos);
-            geo->AddVertex(v);
+            p->AddVertex(v);
         }
-        tree->AddGeometry(geo);
     }
 
-    /*ICTMemoryView* inter;
-    CT_SAFE_CALL(tree->QueryInterface(__uuidof(ICTMemoryView), (void**)&inter));
+    CT_SAFE_CALL(tree->AddGeometry(geo));
 
-    ct_printf("%x\n", inter->GetMemory());*/
+    ICTMemoryView* inter;
+    CT_SAFE_CALL(tree->QueryInterface<ICTMemoryView>(&inter));
 
-    ICTTreeNode* node = tree->GetNodesEntryPtr();
+    ct_printf("%p\n", inter->GetMemory());
+
+    ICTTreeNode* node = tree->GetRoot();
 
     CT_SAFE_CALL(tree->Update());
 
-    //tree->DebugDraw(dbLayer);
-
     CT_SAFE_CALL(CTRelease());
-
-    //system("pause");
 
     return 0;
 }

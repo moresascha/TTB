@@ -21,6 +21,7 @@ typedef unsigned int uint;
 #define CT_TREE_ENABLE_DEBUG_LAYER (1 << 1)
 
 #define CT_CREATE_TREE_CPU (1 << 0)
+#define CT_CREATE_TREE_GPU (1 << 1)
 
 #define __uuidof(clazz) __uuid<##clazz>()
 

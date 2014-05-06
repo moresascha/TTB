@@ -202,6 +202,10 @@ void FontDrawBMFont(const char* text, float x, float y)
     int curserX = 0;
     int curserY = 0;
 
+    /*RECT r;
+    GetClientRect(GetWindowHandle(), &r); 
+    */
+
     float w = (float) 768;
     float h = (float) 768;
 

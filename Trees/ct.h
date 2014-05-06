@@ -9,6 +9,7 @@ class ICTGeometry;
 class ICTVertex;
 class ICTAABB;
 class ICTTreeDebugLayer;
+class ICTPrimitive;
 
 /*struct ctfloat3
 {
@@ -24,6 +25,12 @@ enum CT_GEOMETRY_TOPOLOGY
 {
     CT_TRIANGLES = 0,
     CT_POINTS = 1
+};
+
+enum CT_TREE_DEVICE
+{
+    eCT_CPU,
+    eCT_GPU
 };
 
 enum CT_TREE_TYPE
@@ -69,11 +76,19 @@ extern "C"
 
     CT_EXPORT CT_RESULT CT_API CTCreateGeometry
         (
+        ICTTree* tree,
         ICTGeometry** geo
+        );
+
+    CT_EXPORT CT_RESULT CT_API CTCreatePrimitive
+        (
+        ICTTree* tree,
+        ICTPrimitive** prim
         );
     
     CT_EXPORT CT_RESULT CT_API CTCreateVertex
         (
+        const ICTTree* tree,
         ICTVertex** vertex
         );
 

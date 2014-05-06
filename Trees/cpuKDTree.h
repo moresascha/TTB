@@ -1,6 +1,6 @@
 #pragma once
 #include "ct_runtime.h"
-
+#include <vector>
 #include "geometry.h"
 #include "memory.h"
 
@@ -18,7 +18,7 @@ struct cpuTreeNode : public ICTTreeNode
     cpuTreeNode* right;
     float split;
     SplitAxis splitAxis;
-    std::vector<uint> geometry;
+    std::vector<uint> primitives;
     AABB m_aabb;
     bool visited;
 
@@ -38,16 +38,24 @@ struct cpuTreeNode : public ICTTreeNode
 
 class cpuKDTree : public ICTTree
 {
+    friend class Geometry;
 private:
     uint m_depth;
     cpuTreeNode* m_root;
-    uint address;
-    std::vector<ICTGeometry*> geometry;
+    uint m_address;
+    uint m_interiorNodesCount;
+    uint m_leafNodesCount;
+    std::vector<const ICTGeometry*> geometry;
+    std::vector<const ICTPrimitive*> primitives;
 
     void _CreateTree(cpuTreeNode* parent, uint depth);
 
+protected:
+    void OnPrimitiveMoved(const ICTPrimitive* prim);
+    void OnGeometryMoved(const ICTGeometry* geo);
+
 public:
-    cpuKDTree(void) : m_root(NULL), m_depth(-1), address(0)
+    cpuKDTree(void) : m_root(NULL), m_depth(-1), m_address(0)
     {
     }
 
@@ -60,7 +68,7 @@ public:
 
     CT_RESULT Update(void);
 
-    ICTTreeNode* GetNodesEntryPtr(void)
+    ICTTreeNode* GetRoot(void)
     {
         return m_root;
     }
@@ -74,12 +82,26 @@ public:
         return m_depth;
     }
 
-    uint GetNodesCount(void);
+    uint GetInteriorNodesCount(void) const;
+
+    uint GetLeafNodesCount(void) const;
 
     void SetDepth(byte depth)
     {
         m_depth = depth;
     }
 
+    CT_TREE_DEVICE GetDeviceType(void) const
+    {
+        return eCT_CPU;
+    }
+
+    CT_GEOMETRY_TOPOLOGY GetTopology(void) const
+    {
+        return CT_TRIANGLES;
+    }
+
     ~cpuKDTree(void);
+
+    add_uuid_header(cpuKDTree);
 };

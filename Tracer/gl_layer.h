@@ -6,6 +6,8 @@ HGLRC CreateGLContextAndMakeCurrent(HWND hWnd);
 
 void ReleaseGLContext(HGLRC hRC);
 
+HWND GetWindowHandle(void);
+
 class glProgram
 {
     GLuint m_program;

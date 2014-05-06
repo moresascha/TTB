@@ -3,6 +3,9 @@
 #include <vector>
 #include "ct_runtime.h"
 #include "memory.h"
+#include "check_state.h"
+
+class cpuKDTree;
 
 class AABB : public ICTAABB
 {
@@ -22,7 +25,6 @@ private:
     }
 
 public:
-
     AABB(const AABB& aabb)
     {
         m_max = aabb.m_max;
@@ -111,13 +113,19 @@ public:
     }
 };
 
-class Geometry : public ICTGeometry
+class Triangle : public ICTPrimitive
 {
 private:
-    std::vector<const ICTVertex*> m_pArrayVector;
+    ICTVertex* m_pArrayVector[3];
     AABB m_aabb;
-
+    byte m_currentPos;
 public:
+
+    Triangle(void) : m_currentPos(0)
+    {
+        ZeroMemory(m_pArrayVector, 3 * sizeof(ICTVertex*));
+    }
+
     const ICTAABB& GetAABB(void) const
     {
         return m_aabb;
@@ -128,17 +136,67 @@ public:
         return CT_TRIANGLES;
     }
 
-    const ICTVertex** GetVertices(uint* count)
+    const ICTVertex* const* GetVertices(uint* count) const
+    {
+        *count = 3;
+        return m_pArrayVector;
+    }
+
+    CT_RESULT AddVertex(ICTVertex* v)
+    {
+        checkState(m_currentPos < 3);
+        m_pArrayVector[m_currentPos++] = v;
+        m_aabb.AddVertex(v);
+        return CT_SUCCESS;
+    }
+
+    CT_RESULT Transform(chimera::util::Mat4* matrix);
+
+    Triangle::~Triangle(void)
+    {
+        for(auto& it : m_pArrayVector)
+        {
+            CTMemFreeObject(it);
+        }
+    }
+};
+
+class Geometry : public ICTGeometry
+{
+private:
+    std::vector<ICTPrimitive*> m_pArrayVector;
+    cpuKDTree* m_pTree;
+
+public:
+    Geometry(void) : m_pTree(NULL)
+    {
+    }
+
+    void SetTree(cpuKDTree* tree)
+    {
+        m_pTree = tree;
+    }
+
+    CT_GEOMETRY_TOPOLOGY GetTopology(void) const
+    {
+        return CT_TRIANGLES;
+    }
+
+    const ICTPrimitive* const* GetPrimitives(uint* count) const
     {
         *count = (uint)m_pArrayVector.size();
         return &(m_pArrayVector[0]);
     }
 
-    void AddVertex(const ICTVertex* v)
+     CT_RESULT AddPrimitive(ICTPrimitive* prim)
     {
-        m_pArrayVector.push_back(v);
-        m_aabb.AddVertex(v);
+        checkState(prim->GetTopology() == GetTopology());
+
+        m_pArrayVector.push_back(prim);
+        return CT_SUCCESS;
     }
+
+     CT_RESULT Transform(chimera::util::Mat4* matrix);
 
     Geometry::~Geometry(void)
     {
@@ -148,3 +206,23 @@ public:
         }
     }
 };
+
+//---gpu stuff
+
+typedef Vertex GPUVertex;
+typedef Triangle GPUTriangle;
+typedef Geometry GPUGeometry;
+
+// class GPUVertex : public ICTVertex
+// {
+// 
+// };
+// 
+// class GPUTriangle : public ICTPrimitive
+// {
+// 
+// };
+// 
+// class GPUGeometry : public ICTGeometry
+// {
+// };

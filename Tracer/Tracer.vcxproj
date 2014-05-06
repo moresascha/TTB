@@ -112,10 +112,13 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>../../Nutty/lib;../libs;../bin;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <SubSystem>Windows</SubSystem>
+      <EntryPointSymbol>
+      </EntryPointSymbol>
     </Link>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
-      <CodeGeneration>compute_35,sm_35</CodeGeneration>
+      <CodeGeneration>compute_20,sm_20</CodeGeneration>
       <FastMath>false</FastMath>
       <Optimization>InheritFromHost</Optimization>
       <RuntimeChecks>InheritFromHost</RuntimeChecks>

@@ -23,7 +23,7 @@ public:
     {
         m_glGeoInit = false;
         m_line.SetTopo(GL_LINES);
-
+        m_line.Init(10 * sizeof(float));
         m_pProg = glProgram::CreateProgramFromFile("glsl/vs_p.glsl", "glsl/fs_p.glsl");
     }
 
@@ -61,8 +61,8 @@ public:
         Line l;
         l.start = start; 
         l.end = end;
-        m_lines.push_back(l);
-        /*
+        //m_lines.push_back(l);
+        
         float vertex[10];
         vertex[0] = start.x;
         vertex[1] = start.y;
@@ -78,7 +78,7 @@ public:
 
         m_line.UploadData(vertex);
 
-        m_line.Draw();*/
+        m_line.Draw();
     }
 
     void DrawGLGeo(void)

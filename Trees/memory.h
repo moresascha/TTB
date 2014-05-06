@@ -55,3 +55,17 @@ void CTMemFreeObject(T* ptr)
         RawFree((void*)ptr);
     }
 }
+
+template <
+    typename T
+>
+CT_RESULT CTAllocObjectRoutine(void** obj)
+{
+    T* _obj = CTMemAllocObject<T>();
+    *obj = (void*)_obj;
+    if(obj == NULL)
+    {
+        return CT_MEMORY_ALLOC_FAILURE;
+    }
+    return CT_SUCCESS;
+}

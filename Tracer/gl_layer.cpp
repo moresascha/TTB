@@ -274,6 +274,13 @@ glTextureBuffer::~glTextureBuffer(void)
     _DeleteBuffer();
 }
 
+HWND g_window = NULL;
+
+HWND GetWindowHandle(void)
+{
+    return g_window;
+}
+
 HGLRC CreateGLContextAndMakeCurrent(HWND hWnd)
 {
     HDC hDC;
@@ -281,6 +288,8 @@ HGLRC CreateGLContextAndMakeCurrent(HWND hWnd)
     {
         return 0;
     }
+
+    g_window = hWnd;
 
     int colorBits = 32;
     PIXELFORMATDESCRIPTOR pfd =                  // pfd Tells Windows How We Want Things To Be

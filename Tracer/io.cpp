@@ -40,9 +40,9 @@ extern "C" bool FindFilePath(const char* fileName, std::string& path, std::strin
     {
         if(fileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY && strcmp(fileData.cFileName, "..") > 0)
         {
-            //print("DIR REC SEARCH HERE into %s\n", fileData.cFileName);
-            dir = dir + "/" + fileData.cFileName + "/";
-            if(FindFilePath(fileName, path, &dir))
+            //print("DIR REC SEARCH HERE into %s, %s\n", fileData.cFileName, dir.c_str());
+            std::string ndir = dir + "/" + fileData.cFileName + "/";
+            if(FindFilePath(fileName, path, &ndir))
             {
                 FindClose(fileHandle);
                 return true;
@@ -425,7 +425,7 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
     }
     while(s.good());
 
-    print("    Started %d Threads\n", numThreads);
+    print("    Started %d Thread(s)\n", numThreads);
 
     tries.intervals.push_back(IndexBufferInterval(start, end, currentMat));
 

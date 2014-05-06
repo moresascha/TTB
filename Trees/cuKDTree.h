@@ -47,18 +47,40 @@ public:
 
     CT_RESULT Update(void);
 
-    ICTTreeNode* GetNodesEntryPtr(void);
+    ICTTreeNode* GetRoot(void);
 
     uint GetDepth(void);
 
     uint GetNodesCount(void);
 
     CT_RESULT QueryInterface(ct_uuid id, void** ppInterface);
+
+    uint GetInteriorNodesCount(void) const
+    {
+        return 0;
+    }
+
+    uint GetLeafNodesCount(void) const
+    {
+        return 0;
+    }
     
     void SetDepth(byte d)
     {
 
     }
 
+    CT_GEOMETRY_TOPOLOGY GetTopology(void) const
+    {
+        return CT_TRIANGLES;
+    }
+
+    CT_TREE_DEVICE GetDeviceType(void) const
+    {
+        return eCT_GPU;
+    }
+
     ~cuKDTree(void);
+
+    add_uuid_header(cuKDTree);
 };
