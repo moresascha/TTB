@@ -1,4 +1,3 @@
-#include "ct_output.h"
 #include "ct.h"
 #include <assert.h>
 #include <iostream>

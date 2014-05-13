@@ -1,11 +1,12 @@
 #pragma once
 #include <ct_runtime.h>
+#include "ct_debug.h"
 #include "gl_layer.h"
 
 struct Line
 {
-    ctfloat3 start;
-    ctfloat3 end;
+    CTreal3 start;
+    CTreal3 end;
 };
 
 class glDebugLayer : public ICTTreeDebugLayer
@@ -34,7 +35,7 @@ public:
         glUniform3fv(loc, 1, c);
     }
 
-    void SetDrawColor(const ctfloat3& c)
+    void SetDrawColor(const CTreal3& c)
     {
         SetDrawColor(c.x, c.y, c.z);
     }
@@ -56,7 +57,7 @@ public:
         glUseProgram(0);
     }
 
-    void DrawLine(const ctfloat3& start, const ctfloat3& end)
+    void DrawLine(const CTreal3& start, const CTreal3& end)
     {
         Line l;
         l.start = start; 

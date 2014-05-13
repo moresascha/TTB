@@ -13,45 +13,18 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\imp">
+    <Filter Include="Header Files\api">
+      <UniqueIdentifier>{9cb1261b-cce7-4f9d-b106-4d43eac9b18d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\tree_imps">
       <UniqueIdentifier>{47c252ab-349b-4d17-9143-4f421a197c9b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\trees">
+    <Filter Include="Source Files\tree_imps">
       <UniqueIdentifier>{2e0c6a16-b626-43fc-9fee-be6e099addcb}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="check_state.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_base.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_debug.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_def.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_error.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_geometry.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_memory.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_output.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_runtime.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ct_tree.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="geometry.h">
@@ -63,11 +36,41 @@
     <ClInclude Include="veb.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="cuKDTree.h">
-      <Filter>Header Files\imp</Filter>
+    <ClInclude Include="tree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="output.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ct.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_runtime.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_base.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_debug.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_def.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_error.h">
+      <Filter>Header Files\api</Filter>
     </ClInclude>
     <ClInclude Include="cpuKDTree.h">
-      <Filter>Header Files\imp</Filter>
+      <Filter>Header Files\tree_imps</Filter>
+    </ClInclude>
+    <ClInclude Include="cuKDTree.h">
+      <Filter>Header Files\tree_imps</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_primitive.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
+    <ClInclude Include="traverse.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -77,9 +80,6 @@
     <ClCompile Include="ct_error.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ct_output.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -87,18 +87,24 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="cpuKDTree.cpp">
-      <Filter>Source Files\trees</Filter>
+      <Filter>Source Files\tree_imps</Filter>
     </ClCompile>
     <ClCompile Include="cuKDTree.cpp">
-      <Filter>Source Files\trees</Filter>
+      <Filter>Source Files\tree_imps</Filter>
     </ClCompile>
     <ClCompile Include="geometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="output.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="traverse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="cuKDTree.cu">
-      <Filter>Source Files\trees</Filter>
+      <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
   </ItemGroup>
 </Project>

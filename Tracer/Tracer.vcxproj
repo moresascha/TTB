@@ -85,6 +85,8 @@
     <IncludePath>../Trees;../include;$(CUDA_PATH)/include;../../Chimera/include/;../../Nutty/Nutty;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);../../Chimera/source</IncludePath>
     <OutDir>$(SolutionDir)\bin\</OutDir>
     <IntDir>$(SolutionDir)\tmp\$(Configuration)\$(ProjectName)\</IntDir>
+    <LinkIncremental>
+    </LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>

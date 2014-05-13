@@ -2,7 +2,7 @@
 #include "ct.h"
 #include "check_state.h"
 #include "geometry.h"
-#include "ct_output.h"
+#include "output.h"
 
 cuKDTree::cuKDTree(void) : m_initialized(false)
 {
@@ -56,13 +56,8 @@ uint cuKDTree::GetNodesCount(void)
     return m_nodesCount;
 }
 
-CT_RESULT cuKDTree::QueryInterface(ct_uuid id, void** ppInterface)
+CT_RESULT cuKDTree::QueryInterface(CTuuid id, void** ppInterface)
 {
-    if(id == __uuidof(ICTMemoryView))
-    {
-        *ppInterface = &m_devicePositionView;
-        return CT_SUCCESS;
-    }
     return ICTInterface::QueryInterface(id, ppInterface);
 }
 

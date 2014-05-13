@@ -1,46 +1,54 @@
 #pragma once
-#include "ct_tree.h"
+#include "tree.h"
 #include <Nutty.h>
 #include <DeviceBuffer.h>
-#include "ct_memory.h"
-
-class CudaMemoryView : public ICTMemoryView
-{
-private:
-    nutty::DeviceBuffer<ctfloat3> m_cuPositions;
-
-public:
-    void* GetMemory(void)
-    {
-        return (void*)m_cuPositions.Begin()();
-    }
-};
+#include "memory.h"
 
 class cuKDTree : public ICTTree
 {
 private:
     ICTTreeNode* m_node;
     CT_GEOMETRY_TOPOLOGY m_topo;
-    uint m_nodesCount;
-    uint m_elementCount;
+    CTuint m_nodesCount;
+    CTuint m_elementCount;
     byte m_depth;
     byte m_maxDepth;
     nutty::cuModule* m_pCudaModule;
-    uint m_flags;
-    bool m_initialized;
+    CTuint m_flags;
+    CTbool m_initialized;
 
-    CudaMemoryView m_devicePositionView;
+    void* m_devicePositionView;
 
 public:
     cuKDTree(void);
 
     CT_RESULT SetTopology(CT_GEOMETRY_TOPOLOGY topo);
 
-    CT_RESULT Init(uint flags = 0);
+    CT_RESULT Init(CTuint flags = 0);
 
     CT_RESULT AddGeometry(ICTGeometry* geo);
 
     void DebugDraw(ICTTreeDebugLayer* dbLayer)
+    {
+
+    }
+
+    void OnPrimitiveMoved(const ICTPrimitive* prim)
+    {
+
+    }
+
+    void OnGeometryMoved(const ICTGeometry* geo)
+    {
+
+    }
+
+    CT_RESULT AllocateGeometry(ICTGeometry** geo)
+    {
+        return CT_SUCCESS;
+    }
+
+    CT_RESULT Traverse(ITraverse* traverse)
     {
 
     }
@@ -53,7 +61,7 @@ public:
 
     uint GetNodesCount(void);
 
-    CT_RESULT QueryInterface(ct_uuid id, void** ppInterface);
+    CT_RESULT QueryInterface(CTuuid id, void** ppInterface);
 
     uint GetInteriorNodesCount(void) const
     {
@@ -68,6 +76,11 @@ public:
     void SetDepth(byte d)
     {
 
+    }
+
+    const ICTGeometry* const* GetGeometry(CTuint* gc) const
+    {
+        return NULL;
     }
 
     CT_GEOMETRY_TOPOLOGY GetTopology(void) const

@@ -21,8 +21,8 @@ Global
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|ARM.ActiveCfg = Debug|Win32
-		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
-		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Mixed Platforms.ActiveCfg = Debug|x64
+		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Mixed Platforms.Build.0 = Debug|x64
 		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Win32.ActiveCfg = Debug|Win32
 		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|Win32.Build.0 = Debug|Win32
 		{9786293F-371C-4400-B84F-2D4C4FBA1881}.Debug|x64.ActiveCfg = Debug|x64
@@ -51,5 +51,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
 	EndGlobalSection
 EndGlobal

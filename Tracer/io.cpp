@@ -371,7 +371,7 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
     int lines = 0;
     std::string text;
 
-    int rangeLength = 10000; // lines per thread
+    int rangeLength = 50000; // lines per thread
 
     std::vector<ThreadData*> data;
     std::vector<HANDLE> handles;

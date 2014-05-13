@@ -1,21 +1,36 @@
 #pragma once
-#include <float.h>
 #include <vector>
 #include "ct_runtime.h"
+#include "ct_primitive.h"
 #include "memory.h"
 #include "check_state.h"
+#include "output.h"
 
-class cpuKDTree;
+class ICTGeometry : public ICTInterface
+{
+public:
+    virtual CT_GEOMETRY_TOPOLOGY GetTopology(void) const = 0;
+
+    virtual const ICTPrimitive* const* GetPrimitives(CTuint* count) const = 0;
+
+    virtual CT_RESULT AddPrimitive(const ICTPrimitive* prim) = 0;
+
+    virtual CT_RESULT Transform(chimera::util::Mat4* matrix) = 0;
+
+    virtual ~ICTGeometry(void) {}
+};
+
+//Implementations
 
 class AABB : public ICTAABB
 {
 private:
-    ctfloat3 m_min;
-    ctfloat3 m_max;
+    CTreal3 m_min;
+    CTreal3 m_max;
 
-    void _Shrink(byte axis, byte minMax, float v)
+    void _Shrink(CTbyte axis, CTbyte minMax, float v)
     {
-        ctfloat3& va = minMax ? m_max : m_min;
+        CTreal3& va = minMax ? m_max : m_min;
         switch(axis)
         {
         case 0 : va.x = v; return;
@@ -33,6 +48,11 @@ public:
 
     AABB(void)
     {
+        Reset();
+    }
+
+    void Reset(void)
+    {
         m_min.x = FLT_MAX;
         m_min.y = FLT_MAX;
         m_min.z = FLT_MAX;
@@ -42,9 +62,8 @@ public:
         m_max.z = -FLT_MAX;
     }
 
-    void AddVertex(const ICTVertex* v)
+    void AddVertex(const CTreal3& p)
     {
-        const ctfloat3& p = v->GetPosition();
         m_min.x = fminf(p.x, m_min.x);
         m_min.y = fminf(p.y, m_min.y);
         m_min.z = fminf(p.z, m_min.z);
@@ -54,12 +73,12 @@ public:
         m_max.z = fmaxf(p.z, m_max.z);
     }
 
-    const ctfloat3& GetMin(void) const
+    const CTreal3& GetMin(void) const
     {
         return m_min;
     }
 
-    const ctfloat3& GetMax(void) const
+    const CTreal3& GetMax(void) const
     {
         return m_max;
     }
@@ -73,106 +92,32 @@ public:
     {
         _Shrink(axis, 0, v);
     }
-};
 
-class Vertex : public ICTVertex
-{
-private:
-    ctfloat3 m_position;
-
-public:
-    Vertex(void)
+    AABB& operator=(const AABB& cpy)
     {
-        m_position.x = m_position.y = m_position.z = 0;
+        m_max = cpy.m_max;
+        m_min = cpy.m_min;
+        return *this;
     }
 
-    Vertex(ctfloat3& pos)
+    ~AABB(void)
     {
-        m_position.x = pos.x;
-        m_position.y = pos.y;
-        m_position.z = pos.z;
-    }
 
-    Vertex(const Vertex& v)
-    {
-        m_position.x = v.m_position.x;
-        m_position.y = v.m_position.y;
-        m_position.z = v.m_position.z;
-    }
-
-    const ctfloat3& GetPosition(void) const
-    {
-        return m_position;
-    }
-
-    void SetPosition(const ctfloat3& pos)
-    {
-        m_position.x = pos.x;
-        m_position.y = pos.y;
-        m_position.z = pos.z;
-    }
-};
-
-class Triangle : public ICTPrimitive
-{
-private:
-    ICTVertex* m_pArrayVector[3];
-    AABB m_aabb;
-    byte m_currentPos;
-public:
-
-    Triangle(void) : m_currentPos(0)
-    {
-        ZeroMemory(m_pArrayVector, 3 * sizeof(ICTVertex*));
-    }
-
-    const ICTAABB& GetAABB(void) const
-    {
-        return m_aabb;
-    }
-
-    CT_GEOMETRY_TOPOLOGY GetTopology(void) const
-    {
-        return CT_TRIANGLES;
-    }
-
-    const ICTVertex* const* GetVertices(uint* count) const
-    {
-        *count = 3;
-        return m_pArrayVector;
-    }
-
-    CT_RESULT AddVertex(ICTVertex* v)
-    {
-        checkState(m_currentPos < 3);
-        m_pArrayVector[m_currentPos++] = v;
-        m_aabb.AddVertex(v);
-        return CT_SUCCESS;
-    }
-
-    CT_RESULT Transform(chimera::util::Mat4* matrix);
-
-    Triangle::~Triangle(void)
-    {
-        for(auto& it : m_pArrayVector)
-        {
-            CTMemFreeObject(it);
-        }
     }
 };
 
 class Geometry : public ICTGeometry
 {
 private:
-    std::vector<ICTPrimitive*> m_pArrayVector;
-    cpuKDTree* m_pTree;
+    std::vector<const ICTPrimitive*> m_pPrimitives;
+    ICTTree* m_pTree;
 
 public:
-    Geometry(void) : m_pTree(NULL)
+    Geometry(void) : m_pTree(NULL), m_pPrimitives(0)
     {
     }
 
-    void SetTree(cpuKDTree* tree)
+    void SetTree(ICTTree* tree)
     {
         m_pTree = tree;
     }
@@ -182,25 +127,43 @@ public:
         return CT_TRIANGLES;
     }
 
-    const ICTPrimitive* const* GetPrimitives(uint* count) const
+    const ICTPrimitive* const* GetPrimitives(CTuint* count) const
     {
-        *count = (uint)m_pArrayVector.size();
-        return &(m_pArrayVector[0]);
+        *count = (CTuint)m_pPrimitives.size();
+        return &m_pPrimitives[0];
     }
 
-     CT_RESULT AddPrimitive(ICTPrimitive* prim)
+    CT_RESULT AddPrimitive(const ICTPrimitive* prim)
     {
-        checkState(prim->GetTopology() == GetTopology());
+        switch(prim->GetType())
+        {
+        case CT_TRIANGLE:
+            {
+                const CTTriangle* tri = static_cast<const CTTriangle*>(prim);
 
-        m_pArrayVector.push_back(prim);
-        return CT_SUCCESS;
+                CTTriangle* triCpy = CTMemAllocObject<CTTriangle>();
+                CTreal3 v;
+                tri->GetValue(0, v);
+                triCpy->SetValue(0, v);
+
+                tri->GetValue(1, v);
+                triCpy->SetValue(1, v);
+
+                tri->GetValue(2, v);
+                triCpy->SetValue(2, v);
+
+                m_pPrimitives.push_back(triCpy);
+                return CT_SUCCESS;
+            } break;
+        default : return CT_INVALID_ENUM;
+        }
     }
 
      CT_RESULT Transform(chimera::util::Mat4* matrix);
 
     Geometry::~Geometry(void)
     {
-        for(auto& it : m_pArrayVector)
+        for(auto& it : m_pPrimitives)
         {
             CTMemFreeObject(it);
         }
@@ -209,8 +172,6 @@ public:
 
 //---gpu stuff
 
-typedef Vertex GPUVertex;
-typedef Triangle GPUTriangle;
 typedef Geometry GPUGeometry;
 
 // class GPUVertex : public ICTVertex

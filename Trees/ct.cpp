@@ -1,6 +1,8 @@
 #include "geometry.h"
 #include "ct.h"
-#include "cuKDTree.h"
+//#include "cuKDTree.h"
+#include "traverse.h"
+#include <Nutty.h>
 #include "cpuKDTree.h"
 #include "memory.h"
 
@@ -18,7 +20,7 @@ bool APIENTRY DllMain(HINSTANCE hInst, DWORD reason, LPVOID lpReserved)
     return true;
 }
 
-CT_RESULT CT_API CTInit(uint flags)
+CT_RESULT CT_API CTInit(CTuint flags)
 {
     if(g_bInitialized || (flags & CT_ENABLE_CUDA_ACCEL) == 0)
     {
@@ -54,7 +56,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
         {
             switch(desc->strategy)
             {
-            case eCT_SplitStrategySAH :
+            case eCT_SAH :
                 {
                     ICTTree* _tree;
                     if(desc->flags & CT_CREATE_TREE_CPU)
@@ -63,7 +65,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
                     }
                     else
                     {
-                        _tree = CTMemAllocObject<cuKDTree>();
+                        _tree = NULL;//CTMemAllocObject<cuKDTree>();
                     }
                     *tree = _tree;
                     if(_tree == NULL)
@@ -79,67 +81,88 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
     return (*tree)->Init(desc->flags | (g_flags & CT_TREE_ENABLE_DEBUG_LAYER));
 }
 
-CT_RESULT CT_API CTCreateSAHKDTree(ICTTree** tree, uint flags)
+CT_RESULT CT_API CTCreateSAHKDTree(ICTTree** tree, CTuint flags)
 {
     CT_TREE_DESC _desc;
     ZeroMemory(&_desc, sizeof(CT_TREE_DESC));
-    _desc.strategy = eCT_SplitStrategySAH;
+    _desc.strategy = eCT_SAH;
     _desc.type = eCT_TreeTypeKD;
     _desc.flags = flags;
     return CTCreateTree(tree, &_desc);
 }
 
-CT_RESULT CT_API CTCreateGeometry(ICTTree* tree, ICTGeometry** geo)
+CT_RESULT CT_API CTCreateGeometry(ICTGeometry** geo)
 {
-    if(tree->GetDeviceType() == eCT_CPU)
-    {
-        CT_RESULT res = CTAllocObjectRoutine<Geometry>((void**)geo);
-        if(res == CT_SUCCESS)
-        {
-            ((Geometry*)(*geo))->SetTree((cpuKDTree*)tree);
-        }
-        return res;
-    }
-    else if(tree->GetDeviceType() == eCT_GPU)
-    {
-        return CTAllocObjectRoutine<GPUGeometry>((void**)geo);
-    }
-    else
-    {
-        return CT_INVALID_ENUM;
-    }
+    return CTAllocObjectRoutine<Geometry>((void**)geo);
 }
 
-CT_RESULT CT_API CTCreatePrimitive(ICTTree* tree, ICTPrimitive** prim)
+CT_RESULT CT_API CTAddGeometry(ICTTree* tree, ICTGeometry* geo, CTGeometryHandle* handle)
 {
-    if(tree->GetDeviceType() == eCT_CPU && tree->GetTopology() == CT_TRIANGLES)
-    {
-        return CTAllocObjectRoutine<Triangle>((void**)prim);
-    }
-    else if(tree->GetDeviceType() == eCT_GPU && tree->GetTopology() == CT_TRIANGLES)
-    {
-        return CTAllocObjectRoutine<GPUTriangle>((void**)prim);
-    }
-    else
-    {
-        return CT_INVALID_ENUM;
-    }
+    return tree->AddGeometry(geo, handle);
 }
 
-CT_RESULT CT_API CTCreateVertex(const ICTTree* tree, ICTVertex** v)
+CT_RESULT CT_API CTAddPrimitive(ICTGeometry* geo, ICTPrimitive* prim)
 {
-    if(tree->GetDeviceType() == eCT_CPU)
+    return geo->AddPrimitive(prim);
+}
+
+CT_RESULT CT_API CTUpdate(ICTTree* tree)
+{
+    return tree->Update();
+}
+
+CT_RESULT CT_API CTGetAxisAlignedBB(const ICTTree* tree, const ICTAABB ** aabb)
+{
+    *aabb = tree->GetAxisAlignedBB();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetRawLinearMemory(const ICTTree* tree, CTuint* cnt, const void** memory)
+{
+    const CTreal* d = tree->GetRawPrimitives(cnt);
+    if(d == NULL)
     {
-        return CTAllocObjectRoutine<Vertex>((void**)v);
+        *memory = NULL;
+        cnt = 0;
+        return CT_INVALID_OPERATION;
     }
-    else if(tree->GetDeviceType() == eCT_GPU)
-    {
-        return CTAllocObjectRoutine<GPUVertex>((void**)v);
-    }
-    else
-    {
-        return CT_INVALID_ENUM;
-    }
+    *memory = d;
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetRootNode(const ICTTree* tree, ICTTreeNode** node)
+{
+    *node = tree->GetRoot();
+    return *node != NULL ? CT_SUCCESS : CT_INVALID_OPERATION;
+}
+
+CT_RESULT CT_API CTGetDepth(const ICTTree* tree, CTuint* depth)
+{
+    *depth = tree->GetDepth();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetLeafNodeCount(const ICTTree* tree, CTuint* count)
+{
+    *count = tree->GetLeafNodesCount();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetInteriorNodeCount(const ICTTree* tree, CTuint* count)
+{
+    *count = tree->GetInteriorNodesCount();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTTraverse(ICTTree* tree, CT_TREE_TRAVERSAL order, OnNodeTraverse callBack, void* userData)
+{ 
+    return tree->Traverse(order, callBack, userData);
+}
+
+CT_RESULT CT_API CTTransformGeometryHandle(ICTTree* tree, CTGeometryHandle handle, const CTreal4* matrix4x4)
+{
+    tree->TransformGeometry(handle, matrix4x4);
+    return CT_SUCCESS;
 }
 
 CT_RESULT CT_API CTReleaseObject(ICTInterface* obj)
@@ -154,6 +177,10 @@ CT_RESULT CT_API CTReleaseObject(ICTInterface* obj)
 
 CT_RESULT CT_API CTReleaseTree(ICTTree* tree)
 {
-    CTMemFreeObject(tree);
-    return CT_SUCCESS;
+    return CTReleaseObject(tree);
+}
+
+CT_RESULT CT_API CTReleaseGeometry(ICTGeometry* geo)
+{
+    return CTReleaseObject(geo);
 }

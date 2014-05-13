@@ -1,6 +1,7 @@
 #pragma once
 #include "ct_def.h"
 #include "ct.h"
+#include <stdlib.h>
 
 #define DebugOut OutputDebugStringA
 
@@ -8,6 +9,11 @@ CT_EXPORT const char* CT_API CTGetErrorString
     (
     CT_RESULT error
     );
+
+/*char lineBuffer[2048]; \
+        _itoa(__LINE__, lineBuffer, 10); \
+        DebugOut(lineBuffer); \
+        DebugOut(" "); \*/
 
 #define CT_SAFE_CALL(call) \
 { \

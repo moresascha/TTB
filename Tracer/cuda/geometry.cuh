@@ -23,7 +23,7 @@ struct BBox
     Real3 _max;
 
     __host__ void init(void);
-    __host__ void addPoint(Real3& point);
+    __host__ void addPoint(const Real3& point);
     __device__ __host__ float get(byte axis, byte mm) const;
     __device__ __host__ Real getX(byte mm) const;
     __device__ __host__ Real getY(byte mm) const;

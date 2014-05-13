@@ -14,7 +14,7 @@ enum CT_RESULT
 #define CT_API __stdcall
 #define CT_EXPORT __declspec(dllexport)
 
-typedef unsigned int uint;
+#define CT_INLINE __forceinline
 
 //CT Init flags
 #define CT_ENABLE_CUDA_ACCEL (1 << 0)
@@ -25,4 +25,4 @@ typedef unsigned int uint;
 
 #define __uuidof(clazz) __uuid<##clazz>()
 
-#define add_uuid_header(clazz) static ct_uuid uuid(void) { return #clazz; }
+#define add_uuid_header(clazz) static CTuuid uuid(void) { return #clazz; }

@@ -55,7 +55,7 @@ __host__ void BBox::init(void)
     _max.z = FLT_MIN;
 }
 
-__host__ void BBox::addPoint(Real3& point)
+__host__ void BBox::addPoint(const Real3& point)
 {
     _min.x = min(_min.x, point.x - RAY_BBOX_DELTA);
     _min.y = min(_min.y, point.y - RAY_BBOX_DELTA);
