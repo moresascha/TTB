@@ -21,14 +21,13 @@ struct cpuTreeNode : public ICTTreeNode
     CTreal split;
     CT_SPLIT_AXIS splitAxis;
     CTuint aabb;
-    CTbool visited;
     
     CTuint primCount;
     CTuint primStartIndex;
 
     CTuint depth;
 
-    cpuTreeNode(void) : left(NULL), right(NULL), isLeaf(false), visited(false), aabb(NULL), relLeft(0), relRight(0)
+    cpuTreeNode(void) : left(NULL), right(NULL), isLeaf(false), aabb(NULL), relLeft(0), relRight(0)
     {
     }
 
@@ -96,7 +95,7 @@ struct GeometryRange
 
 template <
     typename T, 
-    CTuint growStep = 2048
+    CTuint growStep = 32000
 >
 class LinearMemory
 {
@@ -156,12 +155,12 @@ public:
         return *(linearMem + index);
     }
 
-    CTuint Size(void)
+    CTuint Size(void) const
     {
         return nextIndex;
     }
 
-    CTuint Capacity(void)
+    CTuint Capacity(void) const
     {
         return size;
     }
@@ -208,6 +207,7 @@ private:
     LinearMemory<AABB> m_linearNodeAABBs;
     LinearMemory<AABB> m_linearPrimAABBs;
     LinearMemory<CTuint> m_linearPerNodePrimitives;
+    LinearMemory<CTuint> m_linearPerLeafNodePrimitives;
 
     LinearMemory<CTuint> m_linearSplitLeft;
     LinearMemory<CTuint> m_linearSplitRight;
@@ -216,6 +216,7 @@ private:
 
     std::vector<CTulong> m_linearGeoHandles;
     std::vector<CTreal3> m_linearPrimitiveMemory;
+    std::vector<CTreal3> m_originalLinearPrimitiveMemory;
     std::map<CTulong, GeometryRange> m_handleRangeMap;
 
     void _CreateTree(cpuTreeNode* parent, CTuint depth);
@@ -241,6 +242,11 @@ public:
     CT_RESULT SetTopology(CT_GEOMETRY_TOPOLOGY topo)
     {
         return CT_SUCCESS;
+    }
+
+    CTuint GetPrimitiveCount(void) const
+    {
+        return m_linearPrimAABBs.Size();
     }
 
     CT_RESULT Init(CTuint flags = 0);
@@ -292,6 +298,8 @@ public:
         *byteCnt = m_linearPrimitiveMemory.size() * sizeof(CTreal3);
         return (CTreal*)&m_linearPrimitiveMemory[0];
     }
+
+    const void* GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCount) const;
 
     CT_RESULT Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData = NULL);
 

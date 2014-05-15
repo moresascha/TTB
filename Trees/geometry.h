@@ -64,13 +64,14 @@ public:
 
     void AddVertex(const CTreal3& p)
     {
-        m_min.x = fminf(p.x, m_min.x);
-        m_min.y = fminf(p.y, m_min.y);
-        m_min.z = fminf(p.z, m_min.z);
+        const static CTreal eps = 1e-3f;
+        m_min.x = fminf(p.x - eps, m_min.x);
+        m_min.y = fminf(p.y - eps, m_min.y);
+        m_min.z = fminf(p.z - eps, m_min.z);
 
-        m_max.x = fmaxf(p.x, m_max.x);
-        m_max.y = fmaxf(p.y, m_max.y);
-        m_max.z = fmaxf(p.z, m_max.z);
+        m_max.x = fmaxf(p.x + eps, m_max.x);
+        m_max.y = fmaxf(p.y + eps, m_max.y);
+        m_max.z = fmaxf(p.z + eps, m_max.z);
     }
 
     const CTreal3& GetMin(void) const

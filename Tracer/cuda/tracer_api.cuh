@@ -20,6 +20,8 @@ extern "C" void RT_SetViewPort(unsigned int width, unsigned int height);
 
 extern "C" void RT_BindGeometry(Triangles& triangles);
 
+extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N);
+
 extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size);
 
 extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& bbox);

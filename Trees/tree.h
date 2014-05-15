@@ -35,9 +35,13 @@ public:
 
     virtual const CTreal* GetRawPrimitives(CTuint* pc) const = 0;
 
+    virtual CTuint GetPrimitiveCount(void) const = 0;
+
     virtual CT_RESULT Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData = NULL) = 0;
 
     virtual void TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix) = 0;
+
+    virtual const void* GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCount) const = 0;
 
     virtual const ICTAABB* GetAxisAlignedBB(void) const = 0;
 

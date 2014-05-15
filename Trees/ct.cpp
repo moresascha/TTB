@@ -48,6 +48,12 @@ CT_RESULT CT_API CTRelease(void)
     return CT_SUCCESS;
 }
 
+CT_RESULT CT_API CTGetPrimitiveCount(const ICTTree* tree, CTuint* count)
+{
+    *count = tree->GetPrimitiveCount();
+    return CT_SUCCESS;
+}
+
 CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
 {
     switch(desc->type)
@@ -114,6 +120,18 @@ CT_RESULT CT_API CTUpdate(ICTTree* tree)
 CT_RESULT CT_API CTGetAxisAlignedBB(const ICTTree* tree, const ICTAABB ** aabb)
 {
     *aabb = tree->GetAxisAlignedBB();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetLinearMemory(const ICTTree* tree, CTuint* cnt, const void** memory, CT_LINEAR_MEMORY_TYPE type)
+{
+    *memory = tree->GetLinearMemory(type, cnt);
+    if(*memory == NULL)
+    {
+        *memory = NULL;
+        cnt = 0;
+        return CT_INVALID_OPERATION;
+    }
     return CT_SUCCESS;
 }
 

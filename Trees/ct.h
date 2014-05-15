@@ -79,6 +79,13 @@ enum CT_TREE_TRAVERSAL
     eCT_VEB
 };
 
+enum CT_LINEAR_MEMORY_TYPE
+{
+    eCT_PER_NODE_PRIM_IDS,
+    eCT_PER_LEAF_NODE_PRIM_IDS,
+    eCT_PRIMITVES,
+};
+
 class ICTAABB : public ICTInterface
 {
 public:
@@ -149,6 +156,12 @@ CT_EXPORT CT_RESULT CT_API CTCreateGeometry
     ICTGeometry** geo
     );
 
+CT_EXPORT CT_RESULT CT_API CTGetPrimitiveCount
+    (
+    const ICTTree* tree, 
+    CTuint* count
+    );
+
 CT_EXPORT CT_RESULT CT_API CTAddGeometry
     (
     ICTTree* tree,
@@ -175,6 +188,12 @@ CT_EXPORT CT_RESULT CT_API CTAddPrimitive
     ICTPrimitive* prim
     );
 
+CT_EXPORT CT_RESULT CT_API CTPreAlloc
+    (
+    ICTTree* tree, 
+    CTuint bytes
+    );
+
 CT_EXPORT CT_RESULT CT_API CTUpdate
     (
     ICTTree* tree
@@ -184,6 +203,14 @@ CT_EXPORT CT_RESULT CT_API CTGetDepth
     (
     const ICTTree* tree,
     CTuint* depth
+    );
+
+CT_EXPORT CT_RESULT CT_API CTGetLinearMemory
+    (
+    const ICTTree* tree,
+    CTuint* byteCnt,
+    const void** memory,
+    CT_LINEAR_MEMORY_TYPE type
     );
 
 CT_EXPORT CT_RESULT CT_API CTGetRawLinearMemory

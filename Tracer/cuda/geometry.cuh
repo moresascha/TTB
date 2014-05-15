@@ -7,7 +7,6 @@ struct Triangles
     Position* positions;
     Normal* normals;
     TexCoord* texCoords;
-    float3* colors;
     byte* matId;
 
     __device__ Normal getTrianglelNormal(uint index, const Real2& bary) const;

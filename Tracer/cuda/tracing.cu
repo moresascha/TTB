@@ -316,6 +316,10 @@ __device__ Real3 transform3f(float3* m3x3l, const Real3* vector)
     return make_real3(dot(m3x3l[0], *vector), dot(m3x3l[1], *vector), dot(m3x3l[2], *vector));
 }
 
+__device__ Real3 transform4f(float4* m3x3l, const Real4* vector)
+{
+    return make_real3(dot(m3x3l[0], *vector), dot(m3x3l[1], *vector), dot(m3x3l[2], *vector));
+}
 __device__ void addRay(RayPair& pair, uint id, Ray& r)
 {
     if(r.rayWeight > RAY_WEIGHT_THRESHOLD)
@@ -516,6 +520,20 @@ __global__ void computeInitialRays(float4* color, Ray* rays, uint* rayMask, floa
     rays[id] = r;
 }
 
+__constant__ Real4 g_matrix[16]; 
+__global__ void transform(Normal* n, Normal* newNormals, uint N)
+{
+    uint id = threadIdx.x + blockDim.x * blockIdx.x;
+
+    if(id >= N)
+    {
+        return;
+    }
+    Normal _n = n[id];
+    Real4 v = make_real4(_n.x, _n.y, _n.z, 0);
+    newNormals[id] = transform4f(g_matrix, &v);
+}
+
 nutty::DeviceBuffer<Ray>* g_rays[2];
 nutty::DeviceBuffer<uint>* g_rayMask;
 
@@ -548,6 +566,16 @@ extern "C" void RT_SetViewPort(unsigned int width, unsigned int height)
     g_grid.x = nutty::cuda::GetCudaGrid(width, g_grp.x);
     g_grid.y = nutty::cuda::GetCudaGrid(height, g_grp.y);
     g_grid.z = 1;
+}
+
+extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N)
+{
+    dim3 grid; dim3 group(256);
+
+    grid.x = nutty::cuda::GetCudaGrid(N, group.x);
+
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_matrix, matrix, 4 * sizeof(Real4), 0, cudaMemcpyHostToDevice));
+    transform<<<grid, group>>>(normals + start, newNormals + start, N);
 }
 
 extern "C" void RT_Init(unsigned int width, unsigned int height)

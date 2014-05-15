@@ -284,6 +284,12 @@ void cpuKDTree::_CreateTree(void)
         {
             m_leafNodesCount++;
             parent->isLeaf = true;
+
+            for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
+            {
+                m_linearPerLeafNodePrimitives[m_linearPerLeafNodePrimitives.Next()] = parent->GetPrimitive(i);
+            }
+
             continue;
         }
 
@@ -346,6 +352,12 @@ void cpuKDTree::_CreateTree(void)
         {
             parent->isLeaf = true;
             m_leafNodesCount++;
+
+            for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
+            {
+                m_linearPerLeafNodePrimitives[m_linearPerLeafNodePrimitives.Next()] = parent->GetPrimitive(i);
+            }
+
             continue;
         }
 
@@ -460,6 +472,28 @@ CT_RESULT cpuKDTree::Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* 
     }
 }
 
+const void* cpuKDTree::GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCount) const
+{
+    switch(type)
+    {
+    case eCT_PER_NODE_PRIM_IDS :
+        {
+            *byteCount = m_linearPerNodePrimitives.Size() * sizeof(uint);
+            return m_linearPerNodePrimitives.Begin();
+        } break;
+    case eCT_PER_LEAF_NODE_PRIM_IDS :
+        {
+            *byteCount = m_linearPerLeafNodePrimitives.Size() * sizeof(uint);
+            return m_linearPerLeafNodePrimitives.Begin();
+        } break;
+    case eCT_PRIMITVES :
+        {
+            return (void*)GetRawPrimitives(byteCount);
+        }
+    default : *byteCount = 0; return NULL;
+    }
+}
+
 void _DebugDrawNodes(cpuTreeNode* parent, ICTTreeDebugLayer* dbLayer, std::vector<const ICTGeometry*> geometry)
 {
     if(parent->isLeaf)
@@ -529,7 +563,7 @@ void cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer)
 
 CTuint GenerateDepth(CTuint N)
 {
-    return (CTuint)(8.5 + 1.3 * log(N));
+    return N > 32 ? (CTuint)(8.5 + 1.3 * log(N)) : 1;
 }
 
 void cpuKDTree::OnGeometryMoved(const CTGeometryHandle geo)
@@ -576,7 +610,8 @@ CT_RESULT cpuKDTree::Update(void)
         m_linearPerNodePrimitives[m_linearPerNodePrimitives.Next()] = i;
     }
 
-    m_depth = min(64, max(1, (m_depth == -1 ? GenerateDepth((uint)m_linearPrimitiveMemory.size()) : m_depth)));
+    m_depth = min(64, max(1, (m_depth == -1 ? GenerateDepth((uint)root.primCount) : m_depth)));
+
     //_CreateTree(&root, 0);
     _CreateTree();
     return CT_SUCCESS;
@@ -600,6 +635,7 @@ CT_RESULT cpuKDTree::AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle)
                     CTreal3 v;
                     tri->GetValue(j, v);
                     m_linearPrimitiveMemory.push_back(v);
+                    m_originalLinearPrimitiveMemory.push_back(v);
                     m_linearPrimAABBs[primAABB].AddVertex(v);
                     m_sceneAABB.AddVertex(v);
                 }
@@ -623,11 +659,12 @@ CT_RESULT cpuKDTree::AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle)
 
 CTreal3 transform3f(const CTreal4* m3x3l, const CTreal3& vector)
 {
-    CTreal3 res;
-    res.x = dot(make_float3(m3x3l[0].x, m3x3l[0].y, m3x3l[0].z), vector);
-    res.y = dot(make_float3(m3x3l[1].x, m3x3l[1].y, m3x3l[1].z), vector);
-    res.z = dot(make_float3(m3x3l[2].x, m3x3l[2].y, m3x3l[2].z), vector);
-    return res;
+    CTreal4 res;
+    CTreal4 v = make_float4(vector.x, vector.y, vector.z, 1);
+    res.x = dot(make_float4(m3x3l[0].x, m3x3l[0].y, m3x3l[0].z, m3x3l[3].x), v);
+    res.y = dot(make_float4(m3x3l[1].x, m3x3l[1].y, m3x3l[1].z, m3x3l[3].y), v);
+    res.z = dot(make_float4(m3x3l[2].x, m3x3l[2].y, m3x3l[2].z, m3x3l[3].z), v);
+    return make_float3(res.x, res.y, res.z);
 }
 
 void cpuKDTree::TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix)
@@ -635,21 +672,26 @@ void cpuKDTree::TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix
     auto range = m_handleRangeMap.find(handle);
     if(range != m_handleRangeMap.end())
     {
-         for(CTuint i = range->second.start; i < range->second.end; ++i)
+         for(CTuint i = 0; i < range->second.end - range->second.start; ++i)
          {
              CTreal d = 0.01;
-             CTreal3& a = m_linearPrimitiveMemory[3 * i + 0];
-             CTreal3& b = m_linearPrimitiveMemory[3 * i + 1];
-             CTreal3& c = m_linearPrimitiveMemory[3 * i + 2];
+             CTreal3 a = m_originalLinearPrimitiveMemory[range->second.start + 3 * i + 0];
+             CTreal3 b = m_originalLinearPrimitiveMemory[range->second.start + 3 * i + 1];
+             CTreal3 c = m_originalLinearPrimitiveMemory[range->second.start + 3 * i + 2];
 
              a = transform3f(matrix, a);
              b = transform3f(matrix, b);
              c = transform3f(matrix, c);
 
-             m_linearPrimAABBs[i].Reset();
-             m_linearPrimAABBs[i].AddVertex(a);
-             m_linearPrimAABBs[i].AddVertex(b);
-             m_linearPrimAABBs[i].AddVertex(c);
+             m_linearPrimitiveMemory[range->second.start + 3 * i + 0] = a;
+             m_linearPrimitiveMemory[range->second.start + 3 * i + 1] = b;
+             m_linearPrimitiveMemory[range->second.start + 3 * i + 2] = c;
+
+             AABB& aabb = m_linearPrimAABBs[range->second.start/3 + i];
+             aabb.Reset();
+             aabb.AddVertex(a);
+             aabb.AddVertex(b);
+             aabb.AddVertex(c);
 
              m_sceneAABB.AddVertex(a);
              m_sceneAABB.AddVertex(b);

@@ -5,6 +5,7 @@
 #include "print.h"
 #include "FreeImage.h"
 #include <sstream>
+#include <assert.h>
 
 extern "C" bool FindFilePath(const char* fileName, std::string& path, std::string* _dir/* = NULL */)
 {
@@ -237,8 +238,9 @@ struct ThreadData
 template <typename Stream>
 int ReadObjFileFromStream(Stream& s, ThreadData* td)
 {
-    bool foundN = false;
-    bool foundTC = false;
+    std::string lines[3];
+    //std::stringstream ss;
+
     while(s.good())
     {
         std::string flag;
@@ -261,7 +263,6 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
             s >> v.z;
 
             td->normals.push_back(v);
-            foundN = true;
         }
         else if(flag == "vt")
         {
@@ -270,41 +271,75 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
             s >> v.y;
 
             td->texCoords.push_back(v);
-            foundTC = true;
         }
         else if(flag == "f")
         {
+            lines[0].clear();
+            lines[1].clear();
+            lines[2].clear();
+
+            s >> lines[0];
+            s >> lines[1];
+            s >> lines[2];
+
+            std::stringstream ss;
+            ss << lines[0] << " " << lines[1] << " " << lines[2];
+
+            bool hasTC = !contains(lines[0].c_str(), "//");
+
             int ip0;
             int in0;
-            int it0;
+            int it0 = 0;
 
             int ip1;
             int in1;
-            int it1;
+            int it1 = 0;
 
             int ip2;
             int in2;
-            int it2;
+            int it2 = 0;
 
             char d;
 
-            s >> ip0; s >> d;
+            ss >> ip0; ss >> d;
 
-            s >> it0; s >> d;
+            if(hasTC)
+            {
+                ss >> it0;
+            }
+            
+            ss >> d;
 
-            s >> in0;
+            ss >> in0;
+
             //--
-            s >> ip1; s >> d;
 
-            s >> it1; s >> d;
+            ss >> ip1; ss >> d;
 
-            s >> in1;
+            if(hasTC)
+            {
+                ss >> it1;
+            }
+            
+            ss >> d;
+
+            ss >> in1;
+
             //--
-            s >> ip2; s >> d;
 
-            s >> it2; s >> d;
+            ss >> ip2; ss >> d;
 
-            s >> in2;
+            if(hasTC)
+            {
+                ss >> it2;
+            }
+            
+            ss >> d;
+
+            ss >> in2;
+
+            assert(ip2 > 0 && ip1 > 0 && ip0 > 0);
+            assert(in2 > 0 && in1 > 0 && in0 > 0);
             
             td->posindex.push_back(ip2 - 1);
             td->posindex.push_back(ip1 - 1);
@@ -314,9 +349,18 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
             td->nindex.push_back(in1 - 1);
             td->nindex.push_back(in0 - 1);
 
-            td->tcindex.push_back(it2 - 1);
-            td->tcindex.push_back(it1 - 1);
-            td->tcindex.push_back(it0 - 1);
+            if(hasTC)
+            {
+                td->tcindex.push_back(it2 - 1);
+                td->tcindex.push_back(it1 - 1);
+                td->tcindex.push_back(it0 - 1);
+            }
+            else
+            {
+                td->tcindex.push_back(0);
+                td->tcindex.push_back(0);
+                td->tcindex.push_back(0);
+            }
         }
         else
         {
@@ -344,6 +388,31 @@ HANDLE ParseObjRange(ThreadData* data)
         CloseHandle(pHandle);
     }
     return pHandle;
+// 
+//     ThreadProc(data);
+//     return NULL;
+}
+
+bool contains(const char* text, const char* pattern)
+{
+    for(;*text;)
+    {
+        const char* c = pattern;
+        int i;
+        for(i = 0; *c; ++i, ++c)
+        {
+            if(text[i] != *c)
+            {
+                break;
+            }
+        }
+        if(*c == '\0')
+        {
+            return true;
+        }
+        ++text;
+    }
+    return false;
 }
 
 bool beginsWith(const char* text, const char* pattern)
@@ -443,9 +512,15 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
         for(int j = 0; j < data[i]->posindex.size(); ++j)
         {
             tries.positions.push_back(d.positions[data[i]->posindex[j]]);
-            tries.tcoords.push_back(d.texCoords[data[i]->tcindex[j]]);
             tries.normals.push_back(d.normals[data[i]->nindex[j]]);
         }
+
+        for(int j = 0; j < data[i]->tcindex.size(); ++j)
+        {
+            uint dd = data[i]->tcindex[j];
+            tries.tcoords.push_back(d.texCoords[dd == -1 ? 0 : dd]);
+        }
+
         delete data[i];
     }
 
