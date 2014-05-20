@@ -197,7 +197,11 @@ int GetMaterial(const char* file, std::map<std::string, RawMaterial>& mats)
         else if(flag == "Reflectivity")
         {
             s >> currentMat->reflectivity;
-            currentMat->reflectivity *= 2;
+            if(currentMat->reflectivity == 0)
+            {
+                currentMat->reflectivity = 0.01f;
+            }
+            //currentMat->reflectivity *= 2;
         }
         else if(flag == "Fresnel_r")
         {

@@ -4,6 +4,7 @@
 struct TraceResult
 {
     bool isHit;
+    bool isBackFace;
     Real2 bary;
     uint triIndex;
 };

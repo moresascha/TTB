@@ -107,6 +107,11 @@ CT_RESULT CT_API CTAddGeometry(ICTTree* tree, ICTGeometry* geo, CTGeometryHandle
     return tree->AddGeometry(geo, handle);
 }
 
+CT_RESULT CT_API CTAddGeometryFromLinearMemory(ICTTree* tree, const void* memory, CTuint elements, CTGeometryHandle* handle)
+{
+    return tree->AddGeometryFromLinearMemory(memory, elements, handle);
+}
+
 CT_RESULT CT_API CTAddPrimitive(ICTGeometry* geo, ICTPrimitive* prim)
 {
     return geo->AddPrimitive(prim);
@@ -201,4 +206,9 @@ CT_RESULT CT_API CTReleaseTree(ICTTree* tree)
 CT_RESULT CT_API CTReleaseGeometry(ICTGeometry* geo)
 {
     return CTReleaseObject(geo);
+}
+
+CT_RESULT CT_API CTTreeDrawDebug(const ICTTree* tree, ICTTreeDebugLayer* debugger)
+{
+    return tree->DebugDraw(debugger);
 }

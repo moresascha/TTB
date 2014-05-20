@@ -22,12 +22,11 @@ public:
 
 //Implementations
 
+#define BB_EPSILON 1e-3f
+
 class AABB : public ICTAABB
 {
 private:
-    CTreal3 m_min;
-    CTreal3 m_max;
-
     void _Shrink(CTbyte axis, CTbyte minMax, float v)
     {
         CTreal3& va = minMax ? m_max : m_min;
@@ -40,6 +39,9 @@ private:
     }
 
 public:
+    CTreal3 m_min;
+    CTreal3 m_max;
+
     AABB(const AABB& aabb)
     {
         m_max = aabb.m_max;
@@ -64,14 +66,13 @@ public:
 
     void AddVertex(const CTreal3& p)
     {
-        const static CTreal eps = 1e-3f;
-        m_min.x = fminf(p.x - eps, m_min.x);
-        m_min.y = fminf(p.y - eps, m_min.y);
-        m_min.z = fminf(p.z - eps, m_min.z);
+        m_min.x = fminf(p.x - BB_EPSILON, m_min.x);
+        m_min.y = fminf(p.y - BB_EPSILON, m_min.y);
+        m_min.z = fminf(p.z - BB_EPSILON, m_min.z);
 
-        m_max.x = fmaxf(p.x + eps, m_max.x);
-        m_max.y = fmaxf(p.y + eps, m_max.y);
-        m_max.z = fmaxf(p.z + eps, m_max.z);
+        m_max.x = fmaxf(p.x + BB_EPSILON, m_max.x);
+        m_max.y = fmaxf(p.y + BB_EPSILON, m_max.y);
+        m_max.z = fmaxf(p.z + BB_EPSILON, m_max.z);
     }
 
     const CTreal3& GetMin(void) const
@@ -155,7 +156,7 @@ public:
 
                 m_pPrimitives.push_back(triCpy);
                 return CT_SUCCESS;
-            } break;
+            }
         default : return CT_INVALID_ENUM;
         }
     }

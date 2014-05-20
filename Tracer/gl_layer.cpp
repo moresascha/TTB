@@ -139,6 +139,10 @@ glGeometry::glGeometry(void) : m_indexBuffer(0), m_vertexBuffer(0), m_vertexArra
 
 void glGeometry::Init(int vertexBytes, int intBytes /* = 0 */)
 {
+    if(m_vertexArray)
+    {
+        return;
+    }
     m_indexBytes = intBytes;
     m_vertexBytes = vertexBytes;
 
@@ -199,22 +203,30 @@ void glGeometry::Draw(void)
     }
 }
 
-glGeometry::~glGeometry(void)
+void glGeometry::Delete(void)
 {
     if(m_indexBuffer)
     {
         glDeleteBuffers(1, &m_indexBuffer);
+        m_indexBuffer = 0;
     }
 
     if(m_vertexBuffer)
     {
         glDeleteBuffers(1, &m_vertexBuffer);
+        m_vertexBuffer = 0;
     }
 
     if(m_vertexArray)
     {
         glDeleteVertexArrays(1, &m_vertexArray);
+        m_vertexArray = 0;
     }
+}
+
+glGeometry::~glGeometry(void)
+{
+    Delete();
 }
 
 glTextureBuffer::glTextureBuffer(void) : m_texture(0), m_buffer(0)

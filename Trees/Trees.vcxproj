@@ -173,7 +173,13 @@
     <ClCompile Include="traverse.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="cuKDTree.cu" />
+    <CudaCompile Include="create_aabb.cu">
+      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
+      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_35,sm_35</CodeGeneration>
+    </CudaCompile>
+    <CudaCompile Include="cuKDTree.cu">
+      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
+    </CudaCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

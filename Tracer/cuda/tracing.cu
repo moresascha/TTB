@@ -54,8 +54,8 @@ extern "C" __device__ Real3 getSunPos(void)
 
 #define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
-#define RECURSION 2
-#define RAY_WEIGHT_THRESHOLD 0.05
+#define RECURSION 4
+#define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
 #define GLASS_RI 1.52
@@ -93,16 +93,18 @@ __device__ __forceinline int intersectP(const Real3& eye, const Real3& ray, cons
 }
 
 template <typename FC>
-__device__  int hitsTriangle(const Real3& rayOrigin, Real min, Real max, const Real3& rayDirection, const Position* positions, Real* hitDepth, Real2& bary, FC cf)
+__device__  int hitsTriangle(const Real3& rayOrigin, Real min, Real max, const Real3& rayDirection, const Position* positions, Real* hitDepth, Real2& bary, FC cf, byte* isBackFace)
 {
     Real3 p0 = positions[0];
     Real3 e1 = positions[1] - p0;
     Real3 e2 = positions[2] - p0;
 
     Real3 s1 = cross(rayDirection, e2);
+    
+    *isBackFace = (byte)(dot(cross(e1, e2), rayDirection) < 0);
 
     Real div = dot(e1, s1);
-    if(div == 0 || cf(e1, e2, rayDirection))
+    if(div == 0) // || cf(e1, e2, rayDirection))
     {
         return 0;
     }
@@ -263,13 +265,15 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
             Real2 bary;
             Real d;
             uint triId = n.content[i];
-            if(hitsTriangle(eye, tmin, rayMax, ray, getGeometry().positions + 3 * triId, &d, bary, cf))
+            byte bf = 0;
+            if(hitsTriangle(eye, tmin, rayMax, ray, getGeometry().positions + 3 * triId, &d, bary, cf, &bf))
             {
                 if(d < depth)
                 {
                     t = d;
                     hit.bary = bary;
                     hit.triIndex = triId;
+                    hit.isBackFace = bf;
                     depth = d;
                     hit.isHit = 1;
                 }
@@ -342,16 +346,17 @@ __global__ void _traceShadowRays(float4* color, Ray* rays, unsigned int width, u
     uint id = r.screenCoord.y * width + r.screenCoord.x;
     float4 c = color[id];
 
-    Real3 d = SUN_POS - r.getOrigin();
+    Real3 d = getSunPos() - r.getOrigin();
     r.setDir(normalize(d));
     r.setMax(length(d));
     
     TraceResult hitRes;
-    traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_back);
+    traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), no_cull);
 
     if(hitRes.isHit)
     {
-        c *= 0.5;
+        Material mat = g_geometry.getMaterial(hitRes.triIndex);
+        c *= (1 - r.rayWeight * mat.alpha());
         color[id] = c;
     }
 }
@@ -365,23 +370,35 @@ __global__ void _traceRefractionRays(float4* color, Ray* refrRays, RayPair rays,
         return;
     }
 
-    Ray r = refrRays[rayIndex];
+     Ray r = refrRays[rayIndex];
+     //r.clampToBBox();
+     addRay(rays, rayIndex, r);
 
-    TraceResult hitRes;
-    traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_front);
+//     r.clampToBBox();
+//     float3 os = r.getOrigin() + 0.1 * r.getDir();
+//     r.origin_min.x = os.x;
+//     r.origin_min.y = os.y;
+//     r.origin_min.z = os.z;
+//     addRay(rays, rayIndex, r);
+//     color[r.screenCoord.y * width + r.screenCoord.x] = make_float4(1,0,0,0);
 
-    if(hitRes.isHit)
-    {
-        Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
-        Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
-        hitPos = hitPos + RAY_HIT_NORMAL_DELTA * normal;
-        
-        Material mat = g_geometry.getMaterial(hitRes.triIndex);
-        r.setOrigin(hitPos);
-        r.setDir(normalize(refract(r.getDir(), -normal, mat.reflectionIndex(), AIR_RI)));
-        r.clampToBBox();
-        addRay(rays, rayIndex, r);
-    }
+//     TraceResult hitRes;
+//     traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_front);
+// 
+//     if(hitRes.isHit)
+//     {
+//         Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
+//         Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
+//         
+//         Material mat = g_geometry.getMaterial(hitRes.triIndex);
+//         //if(
+//         r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+//         r.setDir(normalize(refract(r.getDir(), -normal, mat.reflectionIndex(), AIR_RI)));
+//         r.clampToBBox();
+//         addRay(rays, rayIndex, r);
+// 
+//         shade(hitRes, rayIndex, color, r, mat);
+//     }
 }
 
 template <int WRITE_OUT>
@@ -413,46 +430,52 @@ __global__ void _traceRays(
     {
         Material mat = g_geometry.getMaterial(hitRes.triIndex);
         shade(hitRes, id, color, r, mat);
-
+        //color[id].x = hitRes.isBackFace;
         Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
         Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
-        hitPos = hitPos + RAY_HIT_NORMAL_DELTA * normal;
-
-        Real3 o = r.getOrigin();
-        r.setOrigin(hitPos);
 
         if(WRITE_OUT)
         {
             bool isTrans = mat.isTransp();
             bool isMirror = mat.isMirror();
 
-            if(isTrans || isMirror)
-            {
-                Real3 dir = r.getDir();
-                Real weight = r.rayWeight;
+            Real3 dir = r.getDir();
+            Real weight = r.rayWeight;
                 
-                if(isTrans)
+            if(isTrans)
+            {
+                Real3 refraction;
+                Real ratio;
+                if(hitRes.isBackFace)
                 {
-                    Real3 refraction = refract(r.getDir(), normal, AIR_RI, mat.reflectionIndex());
-                    if(abs(dot(refraction, refraction)) > 0)
-                    {
-                        Real ratio = Reflectance(r.getDir(), normal, 1, mat.reflectionIndex(), mat.fresnel_t());
-                        r.rayWeight = weight * ratio * (1 - mat.alpha());
-                        r.setDir(refraction);
-                        r.clampToBBox();
-                        addRay(newRefractionRays, rayIndex, r);
-                    }
+                    refraction = refract(r.getDir(), -normal, mat.reflectionIndex(), AIR_RI);
+                    ratio = Reflectance(r.getDir(), -normal, mat.reflectionIndex(), AIR_RI, mat.fresnel_t());
+                }
+                else
+                {
+                    refraction = refract(r.getDir(), normal, AIR_RI, mat.reflectionIndex());
+                    ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_t());
                 }
 
-                if(isMirror)
+                if(abs(dot(refraction, refraction)) > 0)
                 {
-                    Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
-                    Real3 reflection = reflect(r.getDir(), normal);
-                    r.rayWeight = ratio * weight * mat.reflectivity();
-                    r.setDir(reflection);
+                    r.rayWeight = weight * ratio * (1 - mat.alpha());
+                    r.setDir(refraction);
+                    r.setOrigin(hitPos + (hitRes.isBackFace ? +RAY_HIT_NORMAL_DELTA * normal : -RAY_HIT_NORMAL_DELTA * normal));
                     r.clampToBBox();
-                    addRay(newReflectionRays, rayIndex, r);
+                    addRay(newRefractionRays, rayIndex, r);
                 }
+            }
+
+            if(isMirror)
+            {
+                Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
+                Real3 reflection = reflect(r.getDir(), normal);
+                r.rayWeight = ratio * weight * mat.reflectivity();
+                r.setDir(reflection);
+                r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+                r.clampToBBox();
+                addRay(newReflectionRays, rayIndex, r);
             }
         }
 
@@ -460,6 +483,7 @@ __global__ void _traceRays(
         //spawn shadow ray forall lights
         if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
         {
+            r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
             r.rayWeight *= 0.5;
             addRay(newShadowRays, rayIndex, r);
         }
@@ -520,7 +544,7 @@ __global__ void computeInitialRays(float4* color, Ray* rays, uint* rayMask, floa
     rays[id] = r;
 }
 
-__constant__ Real4 g_matrix[16]; 
+__constant__ Real4 g_matrix[4]; 
 __global__ void transform(Normal* n, Normal* newNormals, uint N)
 {
     uint id = threadIdx.x + blockDim.x * blockIdx.x;
@@ -719,7 +743,7 @@ void traceRays(float4* colors,
                 rayPairDst.mask = g_rayMask->Begin()() + range.begin;
                 rayPairDst.rays = g_rays[dst]->Begin()() + range.begin;
 
-                nutty::ZeroMem(g_rayMask->Begin() + range.begin, g_rayMask->Begin() + range.end);
+                nutty::ZeroMem<uint>(g_rayMask->Begin() + range.begin, g_rayMask->Begin() + range.end);
                 nutty::ZeroMem(*g_refractionRayMask);
                 nutty::ZeroMem(*g_shadowRayMask);
 
@@ -791,7 +815,7 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
 
     traceRays(colors, g_recDepth, g_width * g_height, g_width, g_height);
 }
-
+ 
 extern "C" void RT_BindTree(TreeNodes& tree)
 {
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_tree, &tree, sizeof(TreeNodes), 0, cudaMemcpyHostToDevice));

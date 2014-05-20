@@ -15,7 +15,7 @@ public:
 
     virtual ICTTreeNode* GetRoot(void) const = 0;
 
-    virtual void DebugDraw(ICTTreeDebugLayer* dbLayer) = 0;
+    virtual CT_RESULT DebugDraw(ICTTreeDebugLayer* dbLayer) const = 0;
 
     virtual CT_RESULT AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle) = 0;
 
@@ -42,6 +42,8 @@ public:
     virtual void TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix) = 0;
 
     virtual const void* GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCount) const = 0;
+
+    virtual CT_RESULT AddGeometryFromLinearMemory(const void* memory, CTuint elements, CTGeometryHandle* handle) = 0;
 
     virtual const ICTAABB* GetAxisAlignedBB(void) const = 0;
 

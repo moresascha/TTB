@@ -45,7 +45,7 @@ public:
         m_ABC[2] = cpy.m_ABC[2];
     }
 
-    const CT_RESULT GetValue(CTbyte index, CTreal3& v) const
+    CT_RESULT GetValue(CTbyte index, CTreal3& v) const
     {
         if(index > 2)
         {

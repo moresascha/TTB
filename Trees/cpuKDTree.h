@@ -8,91 +8,6 @@
 
 class cpuKDTree;
 
-struct cpuTreeNode : public ICTTreeNode
-{
-    CTbool isLeaf;
-    CTuint left;
-    CTuint right;
-    CTuint me;
-
-    CTuint relLeft;
-    CTuint relRight;
-
-    CTreal split;
-    CT_SPLIT_AXIS splitAxis;
-    CTuint aabb;
-    
-    CTuint primCount;
-    CTuint primStartIndex;
-
-    CTuint depth;
-
-    cpuTreeNode(void) : left(NULL), right(NULL), isLeaf(false), aabb(NULL), relLeft(0), relRight(0)
-    {
-    }
-
-    cpuTreeNode(const cpuTreeNode&)
-    {
-        //
-    }
-
-    void Print(void)
-    {
-        ct_printf("left=%d right=%d me=%d relLeft=%d relRight=%d split=%f axis=%d aabb=%d pc=%d pstart=%d\n", 
-            left, right, me, relLeft, relRight, split, splitAxis, aabb,primCount, primStartIndex);
-    }
-
-    CTbool IsLeaf(void)
-    {
-        return isLeaf;
-    }
-
-    CTuint LeftIndex(void)
-    {
-        return left;
-    }
-
-    CTuint RightIndex(void)
-    {
-        return right;
-    }
-
-    ICTTreeNode* RightNode(void)
-    {
-        return this + relRight;
-    }
-
-    ICTTreeNode* LeftNode(void)
-    {
-        return this + relLeft;
-    }
-
-    CTuint GetPrimitiveCount(void)
-    {
-        return primCount;
-    }
-
-    CTuint GetPrimitive(CTuint index);
-
-    CT_SPLIT_AXIS GetSplitAxis(void)
-    {
-        return splitAxis;
-    }
-
-    CTreal GetSplit(void)
-    {
-        return split;
-    }
-
-    ~cpuTreeNode(void);
-};
-
-struct GeometryRange
-{
-    CTuint start;
-    CTuint end;
-};
-
 template <
     typename T, 
     CTuint growStep = 32000
@@ -113,16 +28,16 @@ private:
         }
     }
 
-    void _Grow(void)
+    void _Grow(CTuint newSize)
     {
-        T* newMem = new T[growStep + size];
+        T* newMem = new T[newSize];
         if(linearMem)
         {
             memcpy(newMem, linearMem, nextIndex * sizeof(T));
             _Delete();
         }
         linearMem = newMem;
-        size = growStep + size;
+        size = newSize;
     }
 
 public:
@@ -130,13 +45,47 @@ public:
     {
     }
 
+    void Resize(CTuint newSize)
+    {
+        if(newSize >= size)
+        {
+            _Grow(newSize);
+        }
+    }
+
+    void Advance(CTuint adv)
+    {
+        SetPosition(nextIndex + adv);
+    }
+
+    void SetPosition(CTuint pos)
+    {
+        if(pos <= size)
+        {
+            nextIndex = pos;
+        }
+#ifdef _DEBUG
+        else
+        {
+            __debugbreak();
+        }
+#endif
+    }
+
     CTuint Next(void)
     {
         if(nextIndex >= size)
         {
-            _Grow();
+            _Grow(size + growStep);
         }
         return nextIndex++;
+    }
+
+    CTuint Append(const T& val)
+    {
+        CTuint id = Next();
+        operator[](id) = val;
+        return id;
     }
 
     void Reset(void)
@@ -155,9 +104,19 @@ public:
         return *(linearMem + index);
     }
 
+    T Get(CTuint index) const
+    {
+        return *(linearMem + index);
+    }
+
     CTuint Size(void) const
     {
         return nextIndex;
+    }
+
+    CTuint Bytes(void) const
+    {
+        return Size() * sizeof(T);
     }
 
     CTuint Capacity(void) const
@@ -174,6 +133,119 @@ public:
     {
         _Delete();
     }
+};
+
+struct cpuTreeNode : public ICTTreeNode
+{
+    CTuint me;
+    CTuint relLeft;
+    CTuint relRight;
+    CTuint aabb;
+    CTuint depth;
+
+    cpuTreeNode(void)
+    {
+    }
+
+    cpuTreeNode(const cpuTreeNode&)
+    {
+    }
+
+    void Print(void)
+    {
+        ct_printf("left=%d right=%d me=%d relLeft=%d relRight=%d split=%f axis=%d aabb=%d pc=%d pstart=%d\n", 
+            LeftIndex(), RightIndex(), me, relLeft, relRight, GetSplit(), GetSplitAxis(), aabb, GetPrimitiveCount(), GetPrimStartIndex());
+    }
+
+    void Init(void);
+
+    void cpuTreeNode::SetLeaf(bool leaf);
+
+    void SetSplit(CTreal s);
+
+    void SetPrimCount(CTuint c);
+    
+    void SetPrimStartIndex(CTuint i);
+    
+    void SetSplitAxis(CT_SPLIT_AXIS axis);
+    
+    void SetLeft(CTuint l);
+    
+    void SetRight(CTuint r);
+
+    void SetLeafIndex(CTuint i);
+    
+    CTbool IsLeaf(void) const; 
+
+    CTuint LeftIndex(void) const; 
+
+    CTuint RightIndex(void) const; 
+    
+    ICTTreeNode* RightNode(void);
+    
+    ICTTreeNode* LeftNode(void);
+
+    CTuint GetPrimitiveCount(void) const; 
+    
+    CTuint GetPrimitive(CTuint index) const; 
+
+    CTuint GetPrimStartIndex(void) const; 
+
+    CT_SPLIT_AXIS GetSplitAxis(void) const; 
+    
+    CTreal GetSplit(void) const; 
+    
+    ~cpuTreeNode(void);
+};
+
+struct _AABB
+{
+    CTreal3 _min;
+    CTreal3 _max;
+
+    __device__ __host__ _AABB(void)
+    {
+        Reset();
+    }
+
+    __device__ __host__ _AABB(const _AABB& aabb)
+    {
+        _min = aabb._min;
+        _max = aabb._max;
+    }
+
+    __device__ __host__ ~_AABB(void)
+    {
+
+    }
+
+    __device__ __host__  void Reset(void)
+    {
+        _min.x = FLT_MAX;
+        _min.y = FLT_MAX;
+        _min.z = FLT_MAX;
+
+        _max.x = -FLT_MAX;
+        _max.y = -FLT_MAX;
+        _max.z = -FLT_MAX;
+    }
+
+    __device__ __host__ void AddVertex(const CTreal3& p)
+    {
+        _min.x = fminf(p.x - BB_EPSILON, _min.x);
+        _min.y = fminf(p.y - BB_EPSILON, _min.y);
+        _min.z = fminf(p.z - BB_EPSILON, _min.z);
+
+        _max.x = fmaxf(p.x + BB_EPSILON, _max.x);
+        _max.y = fmaxf(p.y + BB_EPSILON, _max.y);
+        _max.z = fmaxf(p.z + BB_EPSILON, _max.z);
+    }
+};
+
+struct GeometryRange
+{
+    CTuint start;
+    CTuint end;
 };
 
 enum EdgeType
@@ -202,12 +274,26 @@ private:
     CTuint m_address;
     CTuint m_interiorNodesCount;
     CTuint m_leafNodesCount;
+    CTuint m_leafPrimOffset;
+    CTbool m_build;
+
+    LinearMemory<byte> m_linearNodeSplitAxis;
+    LinearMemory<byte> m_linearNodeIsLeaf;
+    LinearMemory<CTuint> m_linearNodeToLeafIndex;
+    LinearMemory<CTuint> m_linearNodeLeft;
+    LinearMemory<CTuint> m_linearNodeRight;
+    LinearMemory<CTreal> m_linearNodeSplits;
+    LinearMemory<CTuint> m_linearNodePrimCount;
+    LinearMemory<CTuint> m_linearNodePrimStartIndex;
 
     LinearMemory<cpuTreeNode> m_linearNodeMemory;
     LinearMemory<AABB> m_linearNodeAABBs;
-    LinearMemory<AABB> m_linearPrimAABBs;
+    LinearMemory<_AABB> m_linearPrimAABBs;
     LinearMemory<CTuint> m_linearPerNodePrimitives;
+
     LinearMemory<CTuint> m_linearPerLeafNodePrimitives;
+    LinearMemory<CTuint> m_linearPerLeafNodePrimStartIndex;
+    LinearMemory<CTuint> m_linearPerLeafNodePrimCount;
 
     LinearMemory<CTuint> m_linearSplitLeft;
     LinearMemory<CTuint> m_linearSplitRight;
@@ -223,11 +309,13 @@ private:
 
     void _CreateTree(void);
 
+    void _DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const;
+
 protected:
     CTuint GetPrimitive(CTuint index);
 
 public:
-    cpuKDTree(void) : m_depth(-1), m_address(0)
+    cpuKDTree(void) : m_depth(-1), m_address(0), m_build(false)
     {
     }
 
@@ -262,7 +350,9 @@ public:
 
     CT_RESULT AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle);
 
-    void DebugDraw(ICTTreeDebugLayer* dbLayer);
+    CT_RESULT AddGeometryFromLinearMemory(const void* memory, CTuint elements, CTGeometryHandle* handle);
+
+    CT_RESULT DebugDraw(ICTTreeDebugLayer* dbLayer) const;
 
     uint GetDepth(void) const
     {
@@ -295,7 +385,7 @@ public:
 
     const CTreal* GetRawPrimitives(CTuint* byteCnt) const
     {
-        *byteCnt = m_linearPrimitiveMemory.size() * sizeof(CTreal3);
+        *byteCnt = (CTuint)(m_linearPrimitiveMemory.size() * sizeof(CTreal3));
         return (CTreal*)&m_linearPrimitiveMemory[0];
     }
 

@@ -78,14 +78,14 @@ bool g_isKeyDown = false;
 bool g_animateCamera = false;
 bool g_animateLight = true;
 
-bool computeMovement(void)
+bool computeMovement(float dt)
 {
     if(!g_isKeyDown)
     {
         return false;
     }
 
-    float delta = 0.25f;
+    float delta = 4*dt;
     if(g_key == KEY_W)
     {
         g_cam.Move(0,0,delta);
@@ -121,14 +121,14 @@ void computeMaterialChange(void)
     //97 ->
 //     Material mat;// = cpuMats[0];
 // 
-//     if(g_key == KEY_G)
-//     {
-//         g_animateCamera ^= 1;
-//     }
-//     else if(g_key == KEY_H)
-//     {
-//         g_animateLight ^= 1;
-//     }
+    if(g_key == KEY_G)
+    {
+        g_animateCamera ^= 1;
+    }
+    else if(g_key == KEY_H)
+    {
+        g_animateLight ^= 1;
+    }
 //     else if(g_key == 97)
 //     {
 //         mat._mirror ^= 1;
@@ -305,17 +305,6 @@ struct NodeGPUData
     nutty::DeviceBuffer<byte> lineartreeSplitAxis;
     nutty::DeviceBuffer<byte> lineartreeNodeIsLeaf;
 
-    nutty::HostBuffer<uint> h_nodeIndexToLeafIndex;
-    nutty::HostBuffer<uint> h_lineartreeContent;
-    nutty::HostBuffer<uint> h_lineartreeContentCount;
-    nutty::HostBuffer<uint> h_lineartreeContentStart;
-    nutty::HostBuffer<uint> h_lineartreeLeftNode;
-    nutty::HostBuffer<uint> h_lineartreeRightNode;
-
-    nutty::HostBuffer<float> h_lineartreeSplit;
-    nutty::HostBuffer<byte> h_lineartreeSplitAxis;
-    nutty::HostBuffer<byte> h_lineartreeNodeIsLeaf;
-
     CTuint leafIndex;
     CTuint startPos;
 
@@ -328,93 +317,32 @@ struct NodeGPUData
     {
         leafIndex = 0;
         startPos = 0;
-
-        h_lineartreeNodeIsLeaf.Reset();
-        h_nodeIndexToLeafIndex.Reset();
-        h_lineartreeLeftNode.Reset();
-        h_lineartreeRightNode.Reset();
-        h_lineartreeSplit.Reset();
-        h_lineartreeSplitAxis.Reset();
-        h_lineartreeContent.Reset();
-
-        h_lineartreeContentStart.Reset();
-        h_lineartreeContentCount.Reset();
     }
 
-    void Copy(void)
+    template <typename T>
+    void Fill(ICTTree* tree, CT_LINEAR_MEMORY_TYPE type, nutty::DeviceBuffer<T>& buffer)
     {
-        //lineartreeContent.Resize(h_lineartreeContent.Size());
-        lineartreeContentCount.Resize(h_lineartreeContentCount.Size());
-
-        nodeIndexToLeafIndex.Resize(h_nodeIndexToLeafIndex.Size());
-        lineartreeSplitAxis.Resize(h_lineartreeSplitAxis.Size());
-        lineartreeContentStart.Resize(h_lineartreeContentStart.Size());
-        lineartreeLeftNode.Resize(h_lineartreeLeftNode.Size());
-        lineartreeRightNode.Resize(h_lineartreeRightNode.Size());
-        lineartreeSplit.Resize(h_lineartreeSplit.Size());
-        lineartreeNodeIsLeaf.Resize(h_lineartreeNodeIsLeaf.Size());
-
-        //nutty::Copy(lineartreeContent.Begin(), h_lineartreeContent.Begin(), h_lineartreeContent.Size());
-
-        nutty::Copy(lineartreeContentCount.Begin(), h_lineartreeContentCount.Begin(), h_lineartreeContentCount.Size());
-        nutty::Copy(nodeIndexToLeafIndex.Begin(), h_nodeIndexToLeafIndex.Begin(), h_nodeIndexToLeafIndex.Size());
-        nutty::Copy(lineartreeSplitAxis.Begin(), h_lineartreeSplitAxis.Begin(), h_lineartreeSplitAxis.Size());
-        nutty::Copy(lineartreeContentStart.Begin(), h_lineartreeContentStart.Begin(), h_lineartreeContentStart.Size());
-        nutty::Copy(lineartreeLeftNode.Begin(), h_lineartreeLeftNode.Begin(), h_lineartreeLeftNode.Size());
-        nutty::Copy(lineartreeRightNode.Begin(), h_lineartreeRightNode.Begin(), h_lineartreeRightNode.Size());
-        nutty::Copy(lineartreeSplit.Begin(), h_lineartreeSplit.Begin(), h_lineartreeSplit.Size());
-        nutty::Copy(lineartreeNodeIsLeaf.Begin(), h_lineartreeNodeIsLeaf.Begin(), h_lineartreeNodeIsLeaf.Size());
+        uint cnt;
+        const void* memory;
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, type));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(buffer.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
     }
 
     void Resize(uint leafs, uint interiorNodes)
     {
         uint nodeCount = interiorNodes + leafs;
 
-        h_lineartreeNodeIsLeaf.Resize(nodeCount);
-        h_nodeIndexToLeafIndex.Resize(nodeCount);
-        h_lineartreeLeftNode.Resize(nodeCount);
-        h_lineartreeRightNode.Resize(nodeCount);
-        h_lineartreeSplit.Resize(nodeCount);
-        h_lineartreeSplitAxis.Resize(nodeCount);
+        lineartreeNodeIsLeaf.Resize(nodeCount);
+        nodeIndexToLeafIndex.Resize(nodeCount);
+        lineartreeLeftNode.Resize(nodeCount);
+        lineartreeRightNode.Resize(nodeCount);
+        lineartreeSplit.Resize(nodeCount);
+        lineartreeSplitAxis.Resize(nodeCount);
 
-        h_lineartreeContentStart.Resize(leafs);
-        h_lineartreeContentCount.Resize(leafs);
+        lineartreeContentStart.Resize(leafs);
+        lineartreeContentCount.Resize(leafs);
     }
 };
-
-void OnTraverse(ICTTreeNode* node, void* userData)
-{
-    NodeGPUData* gpuData = (NodeGPUData*)userData;
-
-    gpuData->h_lineartreeNodeIsLeaf.PushBack(node->IsLeaf());
-
-    gpuData->h_nodeIndexToLeafIndex.PushBack(gpuData->leafIndex);
-
-    gpuData->h_lineartreeLeftNode.PushBack(node->IsLeaf() ? -1 : node->LeftIndex());
-
-    gpuData->h_lineartreeRightNode.PushBack(node->IsLeaf() ? -1 : node->RightIndex());
-
-    gpuData->h_lineartreeSplit.PushBack(node->GetSplit());
-
-    gpuData->h_lineartreeSplitAxis.PushBack((byte)node->GetSplitAxis());
-    
-
-    if(node->IsLeaf())
-    {
-        gpuData->leafIndex++;
-        gpuData->h_lineartreeContentStart.PushBack(gpuData->startPos); //gpuData->h_lineartreeContent.GetPos());
-
-        gpuData->startPos += node->GetPrimitiveCount();
-        gpuData->h_lineartreeContentCount.PushBack(node->GetPrimitiveCount());
-
-        gpuData->h_lineartreeContent.Resize(gpuData->h_lineartreeContent.GetPos() + node->GetPrimitiveCount());
-
-        for(int i = 0; i < node->GetPrimitiveCount(); ++i)
-        {
-            gpuData->h_lineartreeContent.PushBack(node->GetPrimitive(i));
-        }
-    }
-}
 
 void updateTree(ICTTree* tree, NodeGPUData* gpuData)
 {
@@ -429,7 +357,6 @@ void updateTree(ICTTree* tree, NodeGPUData* gpuData)
         loadTimer.Stop();
 
         print("Building Tree took '%f' Seconds\n", loadTimer.GetSeconds());
-
     }    
 
     CTuint nodeCount;
@@ -441,22 +368,26 @@ void updateTree(ICTTree* tree, NodeGPUData* gpuData)
     gpuData->Reset();
     gpuData->Resize(leafs, nodeCount);
     loadTimer.Start();
-    print("Traversing Tree ...\n");
-    CT_SAFE_CALL(CTTraverse(tree, eCT_BREADTH_FIRST, OnTraverse, (void*)gpuData));
+    print("Getting Tree Data ...\n");
+    
+    gpuData->Fill(tree, eCT_NODE_IS_LEAF, gpuData->lineartreeNodeIsLeaf);
+    gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_START_INDEX, gpuData->lineartreeContentStart);
+    gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_COUNT, gpuData->lineartreeContentCount);
+    gpuData->Fill(tree, eCT_NODE_LEFT_CHILD, gpuData->lineartreeLeftNode);
+    gpuData->Fill(tree, eCT_NODE_RIGHT_CHILD, gpuData->lineartreeRightNode);
+    gpuData->Fill(tree, eCT_NODE_SPLITS, gpuData->lineartreeSplit);
+    gpuData->Fill(tree, eCT_NODE_SPLIT_AXIS, gpuData->lineartreeSplitAxis);
+    gpuData->Fill(tree, eCT_NODE_TO_LEAF_INDEX, gpuData->nodeIndexToLeafIndex);
+
     loadTimer.Stop();
     print("Traversing Tree took '%f' Seconds\n", loadTimer.GetSeconds());
-    gpuData->Copy();
+    //gpuData->Copy();
     
     uint cnt;
     const void* memory;
-    CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, eCT_PER_LEAF_NODE_PRIM_IDS));
+    CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, eCT_LEAF_NODE_PRIM_IDS));
     gpuData->lineartreeContent.Resize(cnt / sizeof(uint));
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(gpuData->lineartreeContent.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
-
-//     for(int i = 0; i < gpuData->h_lineartreeContent.Size(); ++i)
-//     {
-//         print("%d %d %d\n", gpuData->lineartreeContent[i], gpuData->h_lineartreeContent[i], ((uint*)memory)[i]);
-//     }
 
     TreeNodes gpuTree;
     gpuTree.leafIndex = gpuData->nodeIndexToLeafIndex.Begin()();
@@ -487,9 +418,26 @@ struct GPUTraceData
     nutty::DeviceBuffer<byte> perVertexMatId;
 };
 
-//std::vector<Material> cpuMats;
+struct GeoHandle
+{
+    CTuint start;
+    CTuint end;
+    CTGeometryHandle handle;
 
-CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* atlas, const char* objFile)
+    GeoHandle(void)
+    {
+
+    }
+
+    GeoHandle(const GeoHandle& gh)
+    {
+        start = gh.start;
+        end = gh.end;
+        handle = gh.handle;
+    }
+};
+
+CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* atlas, const char* objFile, GeoHandle* geoHandle = NULL)
 {
     RawTriangles cpuTris;
     std::string modelPath;
@@ -567,22 +515,18 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
 
     std::vector<byte> matsIds;
 
-    //chimera::util::HTimer timer;
-
     for(auto& i = cpuTris.intervals.begin(); i != cpuTris.intervals.end(); ++i)
     {
-        ICTGeometry* geo;
-        CT_SAFE_CALL(CTCreateGeometry(&geo));
+        matsIds.reserve(matsIds.size() + i->end - i->start);
         byte matIndex = matOffset + cpuTris.GetMaterialIndex(i->material);
-
+        ICTGeometry* geo;
+        CTCreateGeometry(&geo);
         for(uint a = i->start; a < i->end; ++a)
         { 
             CTTriangle tri;
             for(int k = 0; k < 3; ++k)
             {
                 matsIds.push_back(matIndex);
-                //data.perVertexMatId.PushBack(matIndex);
-                //matIds.push_back(matIndex);
                 CTreal3 pos;
                 Position p = cpuTris.positions[3 * a + k];
                 pos.x = p.x;
@@ -590,13 +534,18 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
                 pos.z = p.z;
                 tri.SetValue(k, pos);
             }
-            CT_SAFE_CALL(CTAddPrimitive(geo, &tri));
+            CTAddPrimitive(geo, &tri);
         }
+        //CTAddGeometry(tree, geo, &handle);
+        CTreal3* ptr = &cpuTris.positions[0];
+        CT_SAFE_CALL(CTAddGeometryFromLinearMemory(tree, ptr + 3*i->start, 3*(i->end - i->start), &handle));
+        if(geoHandle)
+        {
+            geoHandle->handle = handle;
+            geoHandle->start = 3*i->start;
+            geoHandle->end = 3*i->end;
 
-
-        CT_SAFE_CALL(CTAddGeometry(tree, geo, &handle));
-
-        CT_SAFE_CALL(CTReleaseGeometry(geo));
+        }
     }
 
     uint start = data.perVertexMatId.Size();
@@ -608,6 +557,12 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int nCmdShow)
 {
+
+// #ifdef _DEBUG
+// #define _CRTDBG_MAP_ALLOC
+//     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_CHECK_CRT_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_EVERY_16_DF);
+// #endif
+
     width = (1024 * 3) / 2;
     height = (512 * 3) / 2;
 
@@ -676,10 +631,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_CPU));
 
     GPUTraceData triGPUData;
-    AddGeometry(triGPUData, tree, atlas, "empty_room.obj");
-    uint start = triGPUData.triNormals.Size();
+    GeoHandle hhandle;
+    AddGeometry(triGPUData, tree, atlas, "empty_room.obj", &hhandle);
+
+    std::vector<GeoHandle> cubeHandles;
+
+    chimera::util::Mat4 model;
+    CTuint addSum = 12*3;
+//     uint c = 16;
+//     for(int i = 0; i < c; ++i)
+//     {
+//         int s = (int)sqrt(c);
+//         CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "cube.obj", &hhandle);
+//         CTuint sumcopy = addSum;
+//         hhandle.start += addSum;
+//         hhandle.end += addSum;
+//         cubeHandles.push_back(hhandle);
+//         addSum += (hhandle.end - hhandle.start);
+//         model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+//         //model.SetTranslation(0,4,0);
+//         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+//     }
+
     CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
-    uint end = triGPUData.triNormals.Size();
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData.triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData.triNormals.Begin(), triGPUData.triNormals.End());
@@ -713,15 +687,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     RT_SetViewPort(twidth, theight);
 
-    chimera::util::Mat4 geoTransMatrix;
     chimera::util::Mat4 matrix;
     chimera::util::Mat4 cameraMatrix;
     float time = 0;
     
     //geoTransMatrix.SetTranslation(0,1,0);
-    //tree->DebugDraw(debugLayer); //collectdata
-
     updateTree(tree, nodeGPUData);
+    CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer)); //collectdata
+
     const void* memory = NULL; 
     CTuint cnt;
     CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
@@ -730,6 +703,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     MSG msg;
     chimera::util::HTimer traverseTimer;
     chimera::util::HTimer traceTimer;
+    chimera::util::HTimer timer;
+    timer.VReset();
+    chimera::util::Vec3 v;
     while(1)
     {
         if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -743,23 +719,38 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         } 
         else 
         { 
-            geoTransMatrix.RotateY(0.01f);
-//             geoTransMatrix.RotateX(0.02f);
-//             geoTransMatrix.RotateZ(-0.01f);
-//             CT_SAFE_CALL(CTTransformGeometryHandle(tree, handle, (CTreal4*)geoTransMatrix.m_m.m));
+            float time = timer.VGetTime() * 2 * 1e-4f;
+            float dt = 1e-3f * timer.VGetLastMillis();
+//             static bool a = true;
+//             if(a)
+//             {
+//                 for(int i = 0; i < cubeHandles.size(); ++i)
+//                 {
+//                     int s = (int)sqrt(cubeHandles.size());
+//                     GeoHandle hhandle = cubeHandles[i];
+//                     model.SetRotateX(time + i/(float)cubeHandles.size());
+//                     model.RotateY(time + 0.5f*i/(float)cubeHandles.size());
+//                     model.RotateZ(time + i*i/(float)(float)cubeHandles.size());
+//                     model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
 // 
-//             traverseTimer.Start();
-//             updateTree(tree, nodeGPUData);
-//             traverseTimer.Stop();
+//                     CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
 // 
-//             const void* memory = NULL; 
-//             CTuint cnt;
-//             CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
-//             CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+//                     RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start));
+//                 }
+// 
+//                 traverseTimer.Start();
+//                 updateTree(tree, nodeGPUData);
+//                 traverseTimer.Stop();
+// 
+//                 const void* memory = NULL; 
+//                 CTuint cnt;
+//                 CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
+//                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+//             }
+//             a = false;
 
-//            RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)geoTransMatrix.m_m.m, start, end - start);
+            computeMovement(dt);
 
-            computeMovement();
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glViewport(width - twidth, 0, width - twidth, height);
 
@@ -768,28 +759,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             glUniformMatrix4fv(loc, 1, false, (float*)g_cam.GetIView());
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-//            debugLayer->DrawGLGeo();
-            //tree->DebugDraw(debugLayer); //collectdata
+            debugLayer->ResetGeometry();
+
+            CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer));
+            debugLayer->DrawGLGeo();
+
             glDisable(GL_BLEND);
             debugLayer->EndDraw();
-
-            uint inc;
-            uint lnc;
-            CTGetInteriorNodeCount(tree, &inc);
-            CTGetLeafNodeCount(tree, &lnc);
-            ss.str("");
-            ss << "Nodes=" << (inc + lnc) << "\n";
-            ss << "Leafes=" << lnc << "\n";
-            FontBeginDraw();
-            FontDrawText(ss.str().c_str(), 0, 0);
-            FontEndDraw();
 
             int glError = glGetError();
             if(glError != GL_NO_ERROR)
             {
                 print("%d\n", glError);
             }
-            DWORD tr_start = timeGetTime();
+
             CUDA_RT_SAFE_CALLING_NO_SYNC(cudaGraphicsMapResources(1, &res));
 
             float4* mappedPtr;
@@ -809,7 +792,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSynchronize());
 
             traceTimer.Stop();
-   
+            
+            //font
+            uint inc;
+            uint lnc;
+            CTGetInteriorNodeCount(tree, &inc);
+            CTGetLeafNodeCount(tree, &lnc);
+            ss.str("");
+            ss << "Nodes=" << (inc + lnc) << "\n";
+            ss << "Leafes=" << lnc << "\n";
+
+            double fps = (int)((1000 / (double)traceTimer.GetMillis()));
+
+            double fps_all = (int)((1000 / (double)(traceTimer.GetMillis() + traverseTimer.GetMillis())));
+            ss << twidth * theight << " Pixel\n";
+            ss << RT_GetLastRayCount() << " Rays\n";
+            ss << vertexCount/3 << " Primitives\n";
+            //ss << (int)(1000.0 / (traverseTimer.GetMillis() == 0 ? 1 : traverseTimer.GetMillis())) << " FPS (Build)\n";
+            ss << fps << " FPS (Tracing)\n";
+            ss << fps_all << " FPS (Overall)";
+
+            //             ss << "\n\nMirror=" << g_matToPrint->isMirror() << " (1)\n";
+            //             ss << "Alpha=" << g_matToPrint->alpha() << " (2,3)\n";
+            //             ss << "Reflectance=" << g_matToPrint->reflectivity() << " (4,5)\n";
+            //             ss << "Fresnel_R=" << g_matToPrint->fresnel_r() << " (6,7)\n";
+            //             ss << "Fresnel_T=" << g_matToPrint->fresnel_t() << " (8,9)\n";
+            //             ss << "IOR=" << g_matToPrint->reflectionIndex() << " (o,p)\n";
+
+            FontBeginDraw();
+            FontDrawText(ss.str().c_str(), 0.0025, 0);
+            std::string info;
+            RT_GetRayInfo(info);
+            FontDrawText(info.c_str(), 0.0025, 0.48f);
+            FontEndDraw();
+            //font end
+
             p->Bind();
             glViewport(0, 0, twidth, theight);
             glBindVertexArray(0);
@@ -817,45 +834,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             glDisableVertexAttribArray(1);
             glDrawArrays(GL_TRIANGLES, 0, 4);
 
-            ss.str("");
-            double fps = (int)((1000 / (double)traceTimer.GetMillis()));
-            double fps_all = (int)((1000 / (double)(traceTimer.GetMillis() + traverseTimer.GetMillis())));
-            ss << twidth * theight << " Pixel\n";
-            ss << RT_GetLastRayCount() << " Rays\n";
-            ss << vertexCount/3 << " Primitives\n";
-            ss << (int)(1000.0/traverseTimer.GetMillis()) << " FPS (Build)\n";
-            ss << fps << " FPS (Tracing)\n";
-            ss << fps_all << " FPS (Overall)";
-
-//             ss << "\n\nMirror=" << g_matToPrint->isMirror() << " (1)\n";
-//             ss << "Alpha=" << g_matToPrint->alpha() << " (2,3)\n";
-//             ss << "Reflectance=" << g_matToPrint->reflectivity() << " (4,5)\n";
-//             ss << "Fresnel_R=" << g_matToPrint->fresnel_r() << " (6,7)\n";
-//             ss << "Fresnel_T=" << g_matToPrint->fresnel_t() << " (8,9)\n";
-//             ss << "IOR=" << g_matToPrint->reflectionIndex() << " (o,p)\n";
-
-            FontBeginDraw();
-            FontDrawText(ss.str().c_str(), 0.0025, 0);
-
-            std::string info;
-            RT_GetRayInfo(info);
-
-            FontDrawText(info.c_str(), 0.0025, 0.67f);
-
-            FontEndDraw();
-
             SwapBuffers(hDC);
 
-            float dt = 0.01f;
-            time += dt;
-            chimera::util::Vec3 v;
             float3 vp;
             if(g_animateLight)
             {
-                v.Set(0,15,-5);
+                v.Set(0, 10, -10);
 
-                matrix.RotateX(dt);
-                matrix.RotateY(2*dt);
+                //matrix.RotateX(0.25*dt);
+                matrix.RotateY(dt);
 
                 v = chimera::util::Mat4::Transform(matrix, v);
 
@@ -874,7 +861,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                 lookAt.z = 0;
 
                 v.Set(0, 4, -9);
-                cameraMatrix.RotateY(-dt);
+                cameraMatrix.RotateY(-0.25*dt);
 
                 v = chimera::util::Mat4::Transform(cameraMatrix, v);
                 vp.x = v.GetX();
@@ -882,6 +869,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                 vp.z = v.GetZ();
                 g_cam.LookAt(lookAt, vp);
             }
+            timer.VTick();
         }
     }
 

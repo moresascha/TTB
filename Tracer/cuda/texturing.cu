@@ -77,6 +77,33 @@ extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size)
                  g_tex2.addressMode[2] = cudaAddressModeWrap;
                  CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex2, textures[2].array, channelDesc));
              } break;
+         case 3:
+             {
+                 g_tex3.normalized = true;
+                 g_tex3.filterMode = cudaFilterModeLinear;
+                 g_tex3.addressMode[0] = cudaAddressModeWrap;
+                 g_tex3.addressMode[1] = cudaAddressModeWrap;
+                 g_tex3.addressMode[2] = cudaAddressModeWrap;
+                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex3, textures[3].array, channelDesc));
+             } break;
+         case 4:
+             {
+                 g_tex4.normalized = true;
+                 g_tex4.filterMode = cudaFilterModeLinear;
+                 g_tex4.addressMode[0] = cudaAddressModeWrap;
+                 g_tex4.addressMode[1] = cudaAddressModeWrap;
+                 g_tex4.addressMode[2] = cudaAddressModeWrap;
+                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex4, textures[4].array, channelDesc));
+             } break;
+         case 5:
+             {
+                 g_tex5.normalized = true;
+                 g_tex5.filterMode = cudaFilterModeLinear;
+                 g_tex5.addressMode[0] = cudaAddressModeWrap;
+                 g_tex5.addressMode[1] = cudaAddressModeWrap;
+                 g_tex5.addressMode[2] = cudaAddressModeWrap;
+                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex5, textures[5].array, channelDesc));
+             } break;
          }
      }
 #endif

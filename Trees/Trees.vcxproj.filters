@@ -106,5 +106,8 @@
     <CudaCompile Include="cuKDTree.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
+    <CudaCompile Include="create_aabb.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

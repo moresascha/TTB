@@ -81,14 +81,27 @@ enum CT_TREE_TRAVERSAL
 
 enum CT_LINEAR_MEMORY_TYPE
 {
-    eCT_PER_NODE_PRIM_IDS,
-    eCT_PER_LEAF_NODE_PRIM_IDS,
-    eCT_PRIMITVES,
+    eCT_LEAF_NODE_PRIM_IDS = 1,
+    eCT_LEAF_NODE_PRIM_START_INDEX = 2,
+    eCT_LEAF_NODE_PRIM_COUNT = 3,
+
+    eCT_NODE_PRIM_IDS = 4,
+    eCT_NODE_IS_LEAF = 5,
+    eCT_NODE_PRIM_START_INDEX = 6,
+    eCT_NODE_PRIM_COUNT = 7,
+    eCT_NODE_LEFT_CHILD = 8,
+    eCT_NODE_RIGHT_CHILD = 10,
+    eCT_NODE_SPLITS = 11,
+    eCT_NODE_SPLIT_AXIS = 12,
+    eCT_NODE_TO_LEAF_INDEX = 13,
+    eCT_PRIMITVES = 14
 };
 
 class ICTAABB : public ICTInterface
 {
 public:
+    ICTAABB(void) {}
+
     virtual void AddVertex(const CTreal3& v) = 0;
 
     virtual const CTreal3& GetMin(void) const = 0;
@@ -106,23 +119,23 @@ public:
 
 struct ICTTreeNode : public ICTInterface
 {
-    virtual CTbool IsLeaf(void) = 0;
+    virtual CTbool IsLeaf(void) const = 0;
 
-    virtual CTuint LeftIndex(void) = 0;
+    virtual CTuint LeftIndex(void) const = 0;
 
-    virtual CTuint RightIndex(void) = 0;
+    virtual CTuint RightIndex(void) const = 0;
 
     virtual ICTTreeNode* LeftNode(void) = 0;
 
     virtual ICTTreeNode* RightNode(void) = 0;
 
-    virtual CTuint GetPrimitiveCount(void) = 0;
+    virtual CTuint GetPrimitiveCount(void) const = 0;
  
-    virtual CTuint GetPrimitive(CTuint index) = 0;
+    virtual CTuint GetPrimitive(CTuint index) const = 0;
 
-    virtual CT_SPLIT_AXIS GetSplitAxis(void) = 0;
+    virtual CT_SPLIT_AXIS GetSplitAxis(void) const = 0;
 
-    virtual CTreal GetSplit(void) = 0;
+    virtual CTreal GetSplit(void) const = 0;
 
     static CTuuid uuid(void) { return "ICTTreeNode"; }
 
@@ -169,11 +182,25 @@ CT_EXPORT CT_RESULT CT_API CTAddGeometry
     CTGeometryHandle* handle
     );
 
+CT_EXPORT CT_RESULT CT_API CTAddGeometryFromLinearMemory
+    (
+    ICTTree* tree,
+    const void* memory,
+    CTuint elements,
+    CTGeometryHandle* handle
+    );
+
 CT_EXPORT CT_RESULT CT_API CTTransformGeometryHandle
     (
     ICTTree* tree,
     CTGeometryHandle handle,
     const CTreal4* matrix4x4
+    );
+
+CT_EXPORT CT_RESULT CT_API CTTreeDrawDebug
+    (
+    const ICTTree* tree,
+    ICTTreeDebugLayer* debugger
     );
 
 CT_EXPORT CT_RESULT CT_API CTTransformGeometry

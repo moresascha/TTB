@@ -1,5 +1,6 @@
 #pragma once
 #include "ct_def.h"
+#include <host_defines.h>
 
 typedef const char* CTuuid;
 

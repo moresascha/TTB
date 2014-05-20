@@ -53,6 +53,8 @@ public:
 
     void Bind(void);
 
+    void Delete(void);
+
     void SetTopo(GLenum topo)
     {
         m_topo = topo;

@@ -47,6 +47,13 @@ public:
         srand(0);
     }
 
+    void ResetGeometry(void)
+    {
+        m_lines.clear();
+        m_line.Delete();
+        m_glGeoInit = false;
+    }
+
     glProgram* GetProgram(void)
     {
         return m_pProg;
@@ -62,24 +69,24 @@ public:
         Line l;
         l.start = start; 
         l.end = end;
-        //m_lines.push_back(l);
+        m_lines.push_back(l);
         
-        float vertex[10];
-        vertex[0] = start.x;
-        vertex[1] = start.y;
-        vertex[2] = start.z;
-        vertex[3] = 0;
-        vertex[4] = 0;
-
-        vertex[5] = end.x;
-        vertex[6] = end.y;
-        vertex[7] = end.z;
-        vertex[8] = 1;
-        vertex[9] = 1;
-
-        m_line.UploadData(vertex);
-
-        m_line.Draw();
+//         float vertex[10];
+//         vertex[0] = start.x;
+//         vertex[1] = start.y;
+//         vertex[2] = start.z;
+//         vertex[3] = 0;
+//         vertex[4] = 0;
+// 
+//         vertex[5] = end.x;
+//         vertex[6] = end.y;
+//         vertex[7] = end.z;
+//         vertex[8] = 1;
+//         vertex[9] = 1;
+// 
+//         m_line.UploadData(vertex);
+// 
+//         m_line.Draw();
     }
 
     void DrawGLGeo(void)

@@ -18,8 +18,8 @@ __device__ void debugShadeTC(const TraceResult& result, uint id, float4* color, 
 
 __device__ void debugShadeNormal(const TraceResult& result, uint id, float4* color, const Ray& r, const Material& mats)
 {
-    Real3 n = getGeometry().getTrianglelNormal(result.triIndex, result.bary);
-    color[id] = make_float4(n.x, n.y, n.z, 0);
+    Real3 n = normalize(getGeometry().getTrianglelNormal(result.triIndex, result.bary));
+    color[id] = 0.5 + 0.5 * make_float4(n.x, n.y, n.z, 0);
 }
 
 __device__ void phongShade(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
