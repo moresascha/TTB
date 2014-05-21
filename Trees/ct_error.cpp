@@ -11,6 +11,7 @@ const char* CT_API CTGetErrorString(CT_RESULT error)
     case CT_NOT_YET_IMPLEMENTED : return "CT_NOT_YET_IMPLEMENTED";
     case CT_INTERFACE_NOT_FOUND : return "CT_INTERFACE_NOT_FOUND";
     case CT_INVALID_OPERATION : return "CT_INVALID_OPERATION";
+    case CT_OPERATION_NOT_SUPPORTED : return "CT_OPERATION_NOT_SUPPORTED";
     default : break;
     }
     return "Unknown Error";

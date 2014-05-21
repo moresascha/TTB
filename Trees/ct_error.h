@@ -27,6 +27,7 @@ CT_EXPORT const char* CT_API CTGetErrorString
         DebugOut(" "); \
         DebugOut(#call); \
         DebugOut("\n"); \
+        exit(-1); \
         \
     } \
 }

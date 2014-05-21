@@ -72,6 +72,15 @@
     <ClInclude Include="traverse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="shared_kernel.h">
+      <Filter>Header Files\tree_imps</Filter>
+    </ClInclude>
+    <ClInclude Include="vec_functions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shared_types.h">
+      <Filter>Header Files\tree_imps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">
@@ -89,9 +98,6 @@
     <ClCompile Include="cpuKDTree.cpp">
       <Filter>Source Files\tree_imps</Filter>
     </ClCompile>
-    <ClCompile Include="cuKDTree.cpp">
-      <Filter>Source Files\tree_imps</Filter>
-    </ClCompile>
     <ClCompile Include="geometry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -101,12 +107,18 @@
     <ClCompile Include="traverse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="cuKDTree.cpp">
+      <Filter>Source Files\tree_imps</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="cuKDTree.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
     <CudaCompile Include="create_aabb.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
+    <CudaCompile Include="transform.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
   </ItemGroup>

@@ -5,6 +5,7 @@
 #include "tree.h"
 #include <map>
 #include <assert.h>
+#include "shared_types.h"
 
 class cpuKDTree;
 
@@ -196,56 +197,6 @@ struct cpuTreeNode : public ICTTreeNode
     CTreal GetSplit(void) const; 
     
     ~cpuTreeNode(void);
-};
-
-struct _AABB
-{
-    CTreal3 _min;
-    CTreal3 _max;
-
-    __device__ __host__ _AABB(void)
-    {
-        Reset();
-    }
-
-    __device__ __host__ _AABB(const _AABB& aabb)
-    {
-        _min = aabb._min;
-        _max = aabb._max;
-    }
-
-    __device__ __host__ ~_AABB(void)
-    {
-
-    }
-
-    __device__ __host__  void Reset(void)
-    {
-        _min.x = FLT_MAX;
-        _min.y = FLT_MAX;
-        _min.z = FLT_MAX;
-
-        _max.x = -FLT_MAX;
-        _max.y = -FLT_MAX;
-        _max.z = -FLT_MAX;
-    }
-
-    __device__ __host__ void AddVertex(const CTreal3& p)
-    {
-        _min.x = fminf(p.x - BB_EPSILON, _min.x);
-        _min.y = fminf(p.y - BB_EPSILON, _min.y);
-        _min.z = fminf(p.z - BB_EPSILON, _min.z);
-
-        _max.x = fmaxf(p.x + BB_EPSILON, _max.x);
-        _max.y = fmaxf(p.y + BB_EPSILON, _max.y);
-        _max.z = fmaxf(p.z + BB_EPSILON, _max.z);
-    }
-};
-
-struct GeometryRange
-{
-    CTuint start;
-    CTuint end;
 };
 
 enum EdgeType

@@ -1,6 +1,6 @@
 #include "geometry.h"
 #include "ct.h"
-//#include "cuKDTree.h"
+#include "cuKDTree.h"
 #include "traverse.h"
 #include <Nutty.h>
 #include "cpuKDTree.h"
@@ -71,7 +71,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
                     }
                     else
                     {
-                        _tree = NULL;//CTMemAllocObject<cuKDTree>();
+                        _tree = CTMemAllocObject<cuKDTree>();
                     }
                     *tree = _tree;
                     if(_tree == NULL)

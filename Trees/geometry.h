@@ -5,6 +5,7 @@
 #include "memory.h"
 #include "check_state.h"
 #include "output.h"
+#include "vec_functions.h"
 
 class ICTGeometry : public ICTInterface
 {
@@ -172,20 +173,73 @@ public:
     }
 };
 
-//---gpu stuff
+struct _AABB
+{
+    CTreal3 _min;
+    CTreal3 _max;
 
-typedef Geometry GPUGeometry;
+    __device__ __host__ _AABB(void)
+    {
+        Reset();
+    }
 
-// class GPUVertex : public ICTVertex
-// {
-// 
-// };
-// 
-// class GPUTriangle : public ICTPrimitive
-// {
-// 
-// };
-// 
-// class GPUGeometry : public ICTGeometry
-// {
-// };
+    __device__ __host__ _AABB(const _AABB& aabb)
+    {
+        _min = aabb._min;
+        _max = aabb._max;
+    }
+
+    __device__ __host__ ~_AABB(void)
+    {
+
+    }
+
+    __device__ __host__  void Reset(void)
+    {
+        _min.x = FLT_MAX;
+        _min.y = FLT_MAX;
+        _min.z = FLT_MAX;
+
+        _max.x = -FLT_MAX;
+        _max.y = -FLT_MAX;
+        _max.z = -FLT_MAX;
+    }
+
+    __device__ __host__ void AddVertex(const CTreal3& p)
+    {
+        _min.x = fminf(p.x - BB_EPSILON, _min.x);
+        _min.y = fminf(p.y - BB_EPSILON, _min.y);
+        _min.z = fminf(p.z - BB_EPSILON, _min.z);
+
+        _max.x = fmaxf(p.x + BB_EPSILON, _max.x);
+        _max.y = fmaxf(p.y + BB_EPSILON, _max.y);
+        _max.z = fmaxf(p.z + BB_EPSILON, _max.z);
+    }
+
+    __device__ float get(byte axis, byte mm)
+    {
+        switch(mm)
+        {
+        case 0 : return getAxis(_min, axis);
+        case 1 : return getAxis(_max, axis);
+        }
+        return 0;
+    }
+
+    __device__ float getX(byte mm)
+    {
+        return get(0, mm);
+    }
+
+    __device__ float getY(byte mm)
+    {
+        return get(1, mm);
+    }
+
+    __device__ float getZ(byte mm)
+    {
+        return get(2, mm);
+    }
+};
+
+typedef _AABB BBox;

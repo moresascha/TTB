@@ -120,7 +120,7 @@
     </Link>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
-      <CodeGeneration>compute_20,sm_20</CodeGeneration>
+      <CodeGeneration>compute_35,sm_35</CodeGeneration>
       <FastMath>false</FastMath>
       <Optimization>InheritFromHost</Optimization>
       <RuntimeChecks>InheritFromHost</RuntimeChecks>

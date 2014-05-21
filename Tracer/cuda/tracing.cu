@@ -54,7 +54,7 @@ extern "C" __device__ Real3 getSunPos(void)
 
 #define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
-#define RECURSION 4
+#define RECURSION 1
 #define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
@@ -324,6 +324,7 @@ __device__ Real3 transform4f(float4* m3x3l, const Real4* vector)
 {
     return make_real3(dot(m3x3l[0], *vector), dot(m3x3l[1], *vector), dot(m3x3l[2], *vector));
 }
+
 __device__ void addRay(RayPair& pair, uint id, Ray& r)
 {
     if(r.rayWeight > RAY_WEIGHT_THRESHOLD)

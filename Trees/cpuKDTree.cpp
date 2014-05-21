@@ -7,88 +7,8 @@
 #include <Nutty.h>
 #include <Copy.h>
 #include <DeviceBuffer.h>
-
-extern "C" void cudaCreateTriangleAABBs(CTreal3* tris, _AABB* aabbs, CTuint N);
-extern "C" void cudaGetSceneBBox(nutty::DeviceBuffer<_AABB>& aabbs, CTuint N, _AABB& aabb);
-
-static int fls(int f)
-{
-    int order;
-    for (order = 0; f != 0;f >>= 1, order++);
-    return order;
-}
-
-static int ilog2(int f)
-{
-    return fls(f) - 1;
-}
-
-static enum CT_SPLIT_AXIS getLongestAxis(CTreal3 v)
-{
-    float m = fmaxf(v.x, fmaxf(v.y, v.z));
-    return m == v.x ? eCT_X : m == v.y ? eCT_Y : eCT_Z;
-}
-
-static float getAxis(const CTreal3& vec, CTbyte axis)
-{
-    switch(axis)
-    {
-    case 0 : return vec.x;
-    case 1 : return vec.y;
-    case 2 : return vec.z;
-    }
-    return 0;
-}
-
-static void setAxis(CTreal3& vec, CTbyte axis, CTreal v)
-{
-    switch(axis)
-    {
-    case 0 : vec.x = v; return;
-    case 1 : vec.y = v; return;
-    case 2 : vec.z = v; return;
-    }
-}
-
-float3 getAxisScale(const ICTAABB& aabb)
-{
-    return make_float3(aabb.GetMax().x - aabb.GetMin().x, aabb.GetMax().y - aabb.GetMin().y, aabb.GetMax().z - aabb.GetMin().z);
-}
-
-float __device__ getArea(const ICTAABB& aabb)
-{
-    float3 axisScale = getAxisScale(aabb);
-    return 2 * axisScale.x * axisScale.y + 2 * axisScale.x * axisScale.z + 2 * axisScale.y * axisScale.z;
-}
-
-CTreal getSAH(const ICTAABB& node, CTint axis, CTreal split, CTint primBelow, CTint primAbove, CTreal traversalCost = 0.125f, CTreal isectCost = 1)
-{
-    CTreal cost = FLT_MAX;
-    if(split > getAxis(node.GetMin(), axis) && split < getAxis(node.GetMax(), axis))
-    {
-        CTreal3 axisScale = getAxisScale(node);
-        CTreal invTotalSA = 1.0f / getArea(node);
-        CTint otherAxis0 = (axis+1) % 3;
-        CTint otherAxis1 = (axis+2) % 3;
-        CTreal belowSA = 
-            2 * 
-            (getAxis(axisScale, otherAxis0) * getAxis(axisScale, otherAxis1) + 
-            (split - getAxis(node.GetMin(), axis)) * 
-            (getAxis(axisScale, otherAxis0) + getAxis(axisScale, otherAxis1)));
-
-        CTreal aboveSA = 
-            2 * 
-            (getAxis(axisScale, otherAxis0) * getAxis(axisScale, otherAxis1) + 
-            (getAxis(node.GetMax(), axis) - split) * 
-            (getAxis(axisScale, otherAxis0) + getAxis(axisScale, otherAxis1)));    
-
-        CTreal pbelow = belowSA * invTotalSA;
-        CTreal pabove = aboveSA * invTotalSA;
-        CTreal bonus = (primAbove == 0 || primBelow == 0) ? 1.0f : 0.0f;
-        cost = traversalCost + isectCost * (1.0f - bonus) * (pbelow * primBelow + pabove * primAbove);
-    }
-    return cost;
-}
+#include "shared_kernel.h"
+#include "vec_functions.h"
 
 cpuKDTree* g_tree;
 
@@ -742,7 +662,7 @@ CT_RESULT cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
     return CT_SUCCESS;
 }
 
-CTuint GenerateDepth(CTuint N)
+__forceinline CTuint GenerateDepth(CTuint N)
 {
     return N > 32 ? (CTuint)(8.5 + 1.3 * log(N)) : 1;
 }

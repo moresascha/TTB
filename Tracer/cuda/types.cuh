@@ -49,15 +49,15 @@ typedef void (*Shader)(const TraceResult& result, uint id, float4* color, const 
 
 struct TreeNodes
 {
-    uint* contentCount;
-    uint* content;
-    uint* _left;
-    uint* _right;
-    uint* contentStart;
-    uint* leafIndex;
-    byte* isLeaf;
-    byte* splitAxis;
-    Real* split;
+    uint* __restrict contentCount;
+    uint* __restrict content;
+    uint* __restrict _left;
+    uint* __restrict _right;
+    uint* __restrict contentStart;
+    uint* __restrict leafIndex;
+    byte* __restrict isLeaf;
+    byte* __restrict splitAxis;
+    Real* __restrict split;
 
     __device__ uint left(uint index) const
     {

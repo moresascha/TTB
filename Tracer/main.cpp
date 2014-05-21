@@ -76,7 +76,7 @@ void Resize(int width, int height)
 WPARAM g_key;
 bool g_isKeyDown = false;
 bool g_animateCamera = false;
-bool g_animateLight = true;
+bool g_animateLight = !true;
 
 bool computeMovement(float dt)
 {
@@ -628,7 +628,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     CT_SAFE_CALL(CTInit(CT_ENABLE_CUDA_ACCEL | CT_TREE_ENABLE_DEBUG_LAYER));
 
     ICTTree* tree;
-    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_CPU));
+    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_GPU));
 
     GPUTraceData triGPUData;
     GeoHandle hhandle;
@@ -638,22 +638,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     chimera::util::Mat4 model;
     CTuint addSum = 12*3;
-//     uint c = 16;
-//     for(int i = 0; i < c; ++i)
-//     {
-//         int s = (int)sqrt(c);
-//         CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "cube.obj", &hhandle);
-//         CTuint sumcopy = addSum;
-//         hhandle.start += addSum;
-//         hhandle.end += addSum;
-//         cubeHandles.push_back(hhandle);
-//         addSum += (hhandle.end - hhandle.start);
-//         model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
-//         //model.SetTranslation(0,4,0);
-//         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
-//     }
+    uint c = 1;
+    for(int i = 0; i < c; ++i)
+    {
+        int s = (int)sqrt(c);
+        CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "cube.obj", &hhandle);
+        CTuint sumcopy = addSum;
+        hhandle.start += addSum;
+        hhandle.end += addSum;
+        cubeHandles.push_back(hhandle);
+        addSum += (hhandle.end - hhandle.start);
+        model.SetTranslation(0,4,0);
+        //model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+        CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+    }
 
-    CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+    //CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData.triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData.triNormals.Begin(), triGPUData.triNormals.End());

@@ -24,7 +24,7 @@ int main(void)
     CT_SAFE_CALL(CTInit(CT_ENABLE_CUDA_ACCEL | CT_TREE_ENABLE_DEBUG_LAYER));
 
     ICTTree* tree;
-    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_CPU));
+    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_GPU));
     
     ICTGeometry* geo;
     CT_SAFE_CALL(CTCreateGeometry(&geo));
