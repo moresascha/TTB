@@ -41,7 +41,7 @@ __global__ void _createAABB(CTreal3* tris, _AABB* aabbs, CTuint N)
     CTreal3 B = tris[3 * idx + 1];
     CTreal3 C = tris[3 * idx + 2];
 
-    _AABB bb = aabbs[idx];
+    _AABB bb;
     bb.Reset();
 
     bb.AddVertex(A);

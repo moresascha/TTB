@@ -47,17 +47,23 @@ struct cuTextureObj;
 
 typedef void (*Shader)(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mats);
 
+#ifdef __CUDACC__
+#define restrict___ __restrict
+#else
+#define restrict___
+#endif
+
 struct TreeNodes
 {
-    uint* __restrict contentCount;
-    uint* __restrict content;
-    uint* __restrict _left;
-    uint* __restrict _right;
-    uint* __restrict contentStart;
-    uint* __restrict leafIndex;
-    byte* __restrict isLeaf;
-    byte* __restrict splitAxis;
-    Real* __restrict split;
+    const uint* restrict___ contentCount;
+    const uint* restrict___ content;
+    const uint* restrict___ _left;
+    const uint* restrict___ _right;
+    const uint* restrict___ contentStart;
+    const uint* restrict___ leafIndex;
+    const byte* restrict___ isLeaf;
+    const byte* restrict___ splitAxis;
+    const Real* restrict___ split;
 
     __device__ uint left(uint index) const
     {

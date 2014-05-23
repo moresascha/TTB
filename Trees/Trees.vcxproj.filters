@@ -81,6 +81,12 @@
     <ClInclude Include="shared_types.h">
       <Filter>Header Files\tree_imps</Filter>
     </ClInclude>
+    <ClInclude Include="buffer_print.h">
+      <Filter>Header Files\tree_imps</Filter>
+    </ClInclude>
+    <ClInclude Include="ct_types.h">
+      <Filter>Header Files\api</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">
@@ -112,14 +118,22 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="cuKDTree.cu">
-      <Filter>Source Files\tree_imps</Filter>
-    </CudaCompile>
     <CudaCompile Include="create_aabb.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
     <CudaCompile Include="transform.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
+    <CudaCompile Include="tmp.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuKDTreeBitonicSearch.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="kd_kernel.cuh">
+      <Filter>Source Files\tree_imps</Filter>
+    </None>
   </ItemGroup>
 </Project>

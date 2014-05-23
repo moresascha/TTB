@@ -138,6 +138,7 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="buffer_print.h" />
     <ClInclude Include="check_state.h" />
     <ClInclude Include="cpuKDTree.h" />
     <ClInclude Include="ct.h" />
@@ -146,6 +147,7 @@
     <ClInclude Include="ct_def.h" />
     <ClInclude Include="ct_error.h" />
     <ClInclude Include="ct_primitive.h" />
+    <ClInclude Include="ct_types.h" />
     <ClInclude Include="output.h" />
     <ClInclude Include="ct_runtime.h" />
     <ClInclude Include="cuKDTree.h">
@@ -177,10 +179,14 @@
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_35,sm_35</CodeGeneration>
     </CudaCompile>
-    <CudaCompile Include="cuKDTree.cu">
+    <CudaCompile Include="cuKDTreeBitonicSearch.cu" />
+    <CudaCompile Include="tmp.cu">
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
     </CudaCompile>
     <CudaCompile Include="transform.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="kd_kernel.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -54,7 +54,7 @@ extern "C" __device__ Real3 getSunPos(void)
 
 #define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
-#define RECURSION 1
+#define RECURSION 2
 #define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
@@ -687,7 +687,7 @@ uint compactRays(nutty::DeviceBuffer<uint>::iterator& maskBegin,
     nutty::ExclusivePrefixSumScan(maskBegin, maskBegin + rayCount, g_scannedRayMask->Begin(), g_sums->Begin());
 
     nutty::Compact(rayDstBegin, raySrcBegin, raySrcBegin + rayCount, maskBegin, g_scannedRayMask->Begin(), 0U);
-
+    auto it = g_scannedRayMask->Begin() + rayCount - 1;
     return *(g_scannedRayMask->Begin() + rayCount - 1) + *(maskBegin + rayCount - 1);
 }
 

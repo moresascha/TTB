@@ -70,18 +70,18 @@ __device__ __host__ __forceinline float3 getAxisScale(const AABB& aabb)
 }
 
 template <
-    typename AABB
+    typename __AABB
 >
-__device__ __host__ __forceinline  float getArea(const AABB& aabb)
+__device__ __host__ __forceinline  float getArea(const __AABB& aabb)
 {
     float3 axisScale = getAxisScale(aabb);
     return 2 * axisScale.x * axisScale.y + 2 * axisScale.x * axisScale.z + 2 * axisScale.y * axisScale.z;
 }
 
 template <
-    typename AABB
+    typename __AABB
 >
-__device__ __host__ CTreal __inline getSAH(const AABB& node, CTint axis, CTreal split, CTint primBelow, CTint primAbove, CTreal traversalCost = 0.125f, CTreal isectCost = 1)
+__device__ __host__ CTreal __inline getSAH(const __AABB& node, CTint axis, CTreal split, CTint primBelow, CTint primAbove, CTreal traversalCost = 0.125f, CTreal isectCost = 1)
 {
     CTreal cost = FLT_MAX;
     if(split > getAxis(node.GetMin(), axis) && split < getAxis(node.GetMax(), axis))

@@ -110,6 +110,11 @@ public:
         return *(linearMem + index);
     }
 
+    T operator[](CTuint index) const
+    {
+        return *(linearMem + index);
+    }
+
     CTuint Size(void) const
     {
         return nextIndex;
@@ -228,8 +233,8 @@ private:
     CTuint m_leafPrimOffset;
     CTbool m_build;
 
-    LinearMemory<byte> m_linearNodeSplitAxis;
-    LinearMemory<byte> m_linearNodeIsLeaf;
+    LinearMemory<CTbyte> m_linearNodeSplitAxis;
+    LinearMemory<CTbyte> m_linearNodeIsLeaf;
     LinearMemory<CTuint> m_linearNodeToLeafIndex;
     LinearMemory<CTuint> m_linearNodeLeft;
     LinearMemory<CTuint> m_linearNodeRight;

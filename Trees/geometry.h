@@ -216,7 +216,7 @@ struct _AABB
         _max.z = fmaxf(p.z + BB_EPSILON, _max.z);
     }
 
-    __device__ float get(byte axis, byte mm)
+    __device__ __host__ CTreal get(byte axis, byte mm) const
     {
         switch(mm)
         {
@@ -226,19 +226,29 @@ struct _AABB
         return 0;
     }
 
-    __device__ float getX(byte mm)
+    __device__ __host__  CTreal getX(byte mm) const
     {
         return get(0, mm);
     }
 
-    __device__ float getY(byte mm)
+    __device__ __host__  CTreal getY(byte mm) const
     {
         return get(1, mm);
     }
 
-    __device__ float getZ(byte mm)
+    __device__ __host__  CTreal getZ(byte mm) const
     {
         return get(2, mm);
+    }
+
+    __device__ __host__  const CTreal3& GetMin(void) const
+    {
+        return _min;
+    }
+
+    __device__ __host__ const CTreal3& GetMax(void) const
+    {
+        return _max;
     }
 };
 

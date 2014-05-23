@@ -22,7 +22,7 @@ bool APIENTRY DllMain(HINSTANCE hInst, DWORD reason, LPVOID lpReserved)
 
 CT_RESULT CT_API CTInit(CTuint flags)
 {
-    if(g_bInitialized || (flags & CT_ENABLE_CUDA_ACCEL) == 0)
+    if(g_bInitialized)
     {
         return CT_INVALID_VALUE;
     }
@@ -71,7 +71,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
                     }
                     else
                     {
-                        _tree = CTMemAllocObject<cuKDTree>();
+                        _tree = CTMemAllocObject<cuKDTreeBitonicSearch>();
                     }
                     *tree = _tree;
                     if(_tree == NULL)
@@ -84,7 +84,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
         } break;
     default : return CT_INVALID_ENUM;
     }
-    return (*tree)->Init(desc->flags | (g_flags & CT_TREE_ENABLE_DEBUG_LAYER));
+    return (*tree)->Init(desc->flags | g_flags);
 }
 
 CT_RESULT CT_API CTCreateSAHKDTree(ICTTree** tree, CTuint flags)
@@ -168,6 +168,12 @@ CT_RESULT CT_API CTGetDepth(const ICTTree* tree, CTuint* depth)
 CT_RESULT CT_API CTGetLeafNodeCount(const ICTTree* tree, CTuint* count)
 {
     *count = tree->GetLeafNodesCount();
+    return CT_SUCCESS;
+}
+
+CT_RESULT CT_API CTGetTreeDeviceType(const ICTTree* tree, CT_TREE_DEVICE* type)
+{
+    *type = tree->GetDeviceType();
     return CT_SUCCESS;
 }
 

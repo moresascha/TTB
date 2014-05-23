@@ -9,6 +9,7 @@
 #include <DeviceBuffer.h>
 #include "shared_kernel.h"
 #include "vec_functions.h"
+#include "buffer_print.h"
 
 cpuKDTree* g_tree;
 
@@ -118,178 +119,6 @@ cpuTreeNode::~cpuTreeNode(void)
 {
 }
 
-// void cpuKDTree::_CreateTree(cpuTreeNode* parent, CTuint depth)
-// {
-//     //ct_printf("%d\n", address);
-//     m_address++;
-// 
-//     for(int i = 0; i < depth; ++i)
-//     {
-//         ct_printf(" ");
-//     }
-//     parent->Print();
-// 
-//     if(depth == m_depth || parent->GetPrimitiveCount() < 4)
-//     {
-//         m_leafNodesCount++;
-//         parent->isLeaf = true;
-//         return;
-//     }
-// 
-//     m_interiorNodesCount++;
-// 
-//     std::vector<EdgeEvent> events;
-// 
-//     CT_SPLIT_AXIS axis = getLongestAxis(m_linearNodeAABBs[parent->aabb].GetMax() - m_linearNodeAABBs[parent->aabb].GetMin());
-//     
-//     AABB* aabb;
-// 
-//     for(int i = 0; i < parent->GetPrimitiveCount(); ++i)
-//     {
-//         //m_linearPrimitiveMemory[parent->primitives[i]].GetAxisAlignedBB(geoAABB);
-//         aabb = &m_linearPrimAABBs[parent->GetPrimitive(i)];
-// 
-//         float start = getAxis(aabb->GetMin(), axis);
-//         float end = getAxis(aabb->GetMax(), axis);
-// 
-//         EdgeEvent startEvent;
-//         startEvent.split = start;
-//         startEvent.type = eEdgeStart;
-//         events.push_back(startEvent);
-// 
-//         EdgeEvent endEvent;
-//         endEvent.type = eEdgeEnd;
-//         endEvent.split = end;
-//         events.push_back(endEvent);
-//     }
-// 
-//     std::sort(events.begin(), events.end());
-// 
-//     float currentBestSAH = FLT_MAX;
-//     float currentSplit = 0;
-//     int primsBelow = 0;
-//     int primsAbove = (int)parent->GetPrimitiveCount();
-// 
-//     for(int i = 0; i < events.size(); ++i)
-//     {
-//         EdgeEvent& event = events[i];
-//         
-//         if(event.type == eEdgeEnd)
-//         {
-//             primsAbove--;
-//         }
-// 
-//         float sah = getSAH(m_linearNodeAABBs[parent->aabb], axis, event.split, primsBelow, primsAbove);
-// 
-//         //ct_printf("sah=%f, axis=%d, split=%f\n", sah, axis, event.split);
-// 
-//         if(sah < currentBestSAH)
-//         {
-//             currentBestSAH = sah;
-//             currentSplit = event.split;
-//         }
-// 
-//         if(event.type == eEdgeStart)
-//         {
-//             primsBelow++;
-//         }
-//     }
-// 
-//     if(currentBestSAH == FLT_MAX)
-//     {
-//         parent->isLeaf = true;
-//         return;
-//     }
-// 
-//     //ct_printf("Found best: sah=%f, axis=%d, split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, currentSplit);
-// 
-//     parent->split = currentSplit;
-//     parent->splitAxis = axis;
-// 
-//     //left
-//     parent->left = m_linearNodeMemory.Next();
-//     parent->relLeft = parent->left - parent->me;
-// 
-//     cpuTreeNode& leftNode = m_linearNodeMemory[parent->left];
-//     leftNode.aabb = m_linearNodeAABBs.Next();
-//     leftNode.split = 0;
-//     leftNode.splitAxis = (CT_SPLIT_AXIS)-1;
-//     leftNode.isLeaf = false;
-//     leftNode.me = parent->left;
-// 
-//     m_linearNodeAABBs[parent->left] = m_linearNodeAABBs[parent->aabb];
-//     m_linearNodeAABBs[parent->left].ShrinkMax(axis, currentSplit);
-// 
-//     //right
-//     parent->right = m_linearNodeMemory.Next();
-//     parent->relRight = parent->right - parent->me;
-// 
-//     cpuTreeNode& rightNode = m_linearNodeMemory[parent->right];
-//     rightNode.aabb = m_linearNodeAABBs.Next();
-//     rightNode.split = 0;
-//     rightNode.splitAxis = (CT_SPLIT_AXIS)-1;
-//     rightNode.isLeaf = false;
-//     rightNode.me = parent->right;
-// 
-//     m_linearNodeAABBs[parent->right] = m_linearNodeAABBs[parent->aabb];
-//     m_linearNodeAABBs[parent->right].ShrinkMin(axis, currentSplit);
-// 
-//     parent->isLeaf = false;
-// 
-//     CTuint start = m_linearPerNodePrimitives.Size();
-// 
-//     leftNode.primStartIndex = start;
-//     leftNode.primCount = 0;
-// 
-//     rightNode.primStartIndex = start;
-//     rightNode.primCount = 0;
-// 
-//     m_linearSplitLeft.Reset();
-//     m_linearSplitRight.Reset();
-// 
-//     for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
-//     {
-//         aabb = &m_linearPrimAABBs[parent->GetPrimitive(i)];
-//         
-//         float mini = getAxis(aabb->GetMin(), axis);
-//         float maxi = getAxis(aabb->GetMax(), axis);
-// 
-//         if(mini < currentSplit)
-//         {
-//             leftNode.primCount++;
-//             CTuint id = m_linearSplitLeft.Next();
-//             m_linearSplitLeft[id] = parent->GetPrimitive(i);
-//             //m_linearNodeMemory[parent->left].primitives.push_back(parent->primitives[i]);
-//         }
-// 
-//         if(maxi > currentSplit)
-//         {
-//             rightNode.primCount++;
-//             CTuint id = m_linearSplitRight.Next();
-//             m_linearSplitRight[id] = parent->GetPrimitive(i);
-//             //m_linearNodeMemory[parent->right].primitives.push_back(parent->primitives[i]);
-//         }
-//     }
-// 
-//     for(CTuint i = 0; i < m_linearSplitLeft.Size(); ++i)
-//     {
-//         CTuint id = m_linearPerNodePrimitives.Next();
-//         m_linearPerNodePrimitives[id] = m_linearSplitLeft[i];
-//     }
-// 
-//     for(CTuint i = 0; i < m_linearSplitRight.Size(); ++i)
-//     {
-//         CTuint id = m_linearPerNodePrimitives.Next();
-//         m_linearPerNodePrimitives[id] = m_linearSplitRight[i];
-//     }
-// 
-//     rightNode.primStartIndex += leftNode.primCount;
-//     parent->leftAdd = m_address;
-//     _CreateTree(&leftNode, depth + 1);
-//     parent->rightAdd = m_address;
-//     _CreateTree(&rightNode, depth + 1);
-// }
-
 float g_split;
 byte g_axis;
 
@@ -306,7 +135,7 @@ void cpuKDTree::_CreateTree(void)
         cpuTreeNode* parent = &m_linearNodeMemory[nodeId];
         queue.pop();
 
-        if(parent->depth == m_depth || parent->GetPrimitiveCount() < 16)
+        if(parent->depth == m_depth || parent->GetPrimitiveCount() < MAX_ELEMENTS_PER_LEAF)
         {
             parent->SetLeaf(true);
             parent->SetLeafIndex(m_leafNodesCount);
@@ -325,6 +154,7 @@ void cpuKDTree::_CreateTree(void)
         AABB& parentAABB = m_linearNodeAABBs[parent->aabb];
 
         CT_SPLIT_AXIS axis = getLongestAxis(parentAABB.GetMax() - parentAABB.GetMin());
+        ct_printf("%d\n", axis);
         m_events.clear();
         for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
         {
@@ -361,8 +191,7 @@ void cpuKDTree::_CreateTree(void)
             }
 
             float sah = getSAH(parentAABB, axis, event.split, primsBelow, primsAbove);
-
-            //ct_printf("sah=%f, axis=%d, split=%f\n", sah, axis, event.split);
+            ct_printf("[%d %d] Split=%.4f SAH=%.4f\n", primsBelow, primsAbove, event.split, sah == FLT_MAX ? -1.0f : sah);
 
             if(sah < currentBestSAH)
             {
@@ -375,7 +204,7 @@ void cpuKDTree::_CreateTree(void)
                 primsBelow++;
             }
         }
-
+        ct_printf("\n");
         if(currentBestSAH == FLT_MAX)
         {
             parent->SetLeaf(true);
@@ -392,7 +221,7 @@ void cpuKDTree::_CreateTree(void)
             continue;
         }
 
-        //ct_printf("Found best: sah=%f, axis=%d, split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, currentSplit);
+        ct_printf("Found best: sah=%f, axis=%d, split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, currentSplit);
         parent->SetLeafIndex(m_leafNodesCount);
         parent->SetSplit(currentSplit);
         parent->SetSplitAxis(axis);
@@ -489,6 +318,15 @@ void cpuKDTree::_CreateTree(void)
         queue.push(parent->LeftIndex());
         queue.push(parent->RightIndex());
     }
+
+    PrintBuffer(m_linearNodeAABBs);
+    PrintBuffer(m_linearNodeIsLeaf);
+    PrintBuffer(m_linearNodeSplits);
+    PrintBuffer(m_linearNodePrimCount);
+    PrintBuffer(m_linearNodePrimStartIndex);
+    PrintBuffer(m_linearPerLeafNodePrimCount);
+    PrintBuffer(m_linearPerLeafNodePrimStartIndex);
+    PrintBuffer(m_linearPerLeafNodePrimitives);
 }
 
 CT_RESULT cpuKDTree::Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData)
@@ -583,11 +421,6 @@ void cpuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
 {
     if(m_linearNodeIsLeaf.Get(parent))
     {
-//         dbLayer->SetDrawColor(rand() / (float)RAND_MAX, rand() / (float)RAND_MAX, rand() / (float)RAND_MAX);
-//         for(int i = 0; i < parent->geometry.size(); ++i)
-//         {
-//             dbLayer->DrawBox(geometry[parent->geometry[i]]->GetAABB());
-//         }
         return;
     }
 
@@ -602,8 +435,6 @@ void cpuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
 
     CTint other0 = (axis + 1) % 3;
     CTint other1 = (axis + 2) % 3;
-
-    //dbLayer->SetDrawColor(0,0.2f,0);
 
     AABB aaba = m_linearNodeAABBs.Get(parent);
 
@@ -660,11 +491,6 @@ CT_RESULT cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
  
     _DebugDrawNodes(m_root, dbLayer);
     return CT_SUCCESS;
-}
-
-__forceinline CTuint GenerateDepth(CTuint N)
-{
-    return N > 32 ? (CTuint)(8.5 + 1.3 * log(N)) : 1;
 }
 
 void cpuKDTree::OnGeometryMoved(const CTGeometryHandle geo)
@@ -735,7 +561,6 @@ CT_RESULT cpuKDTree::Update(void)
 
 CT_RESULT cpuKDTree::AddGeometryFromLinearMemory(const void* memory, CTuint elements, CTGeometryHandle* handle)
 {
-
     CTuint startindex = (CTuint)m_linearPrimitiveMemory.size();
     m_linearPrimitiveMemory.resize(m_linearPrimitiveMemory.size() + elements);
     m_originalLinearPrimitiveMemory.resize(m_originalLinearPrimitiveMemory.size() + elements);

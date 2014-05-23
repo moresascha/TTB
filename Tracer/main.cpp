@@ -19,8 +19,11 @@
 #include "gl_font.h"
 #include "gl_globals.h"
 
+#ifdef _DEBUG
 #define NUTTY_DEBUG
+#endif
 #include <Nutty.h>
+
 #include <Copy.h>
 #include <DeviceBuffer.h>
 #include <cuda/cuda_helper.h>
@@ -53,7 +56,7 @@
 #endif
 
 Camera g_cam;
-
+cuTextureAtlas* atlas;
 glDebugLayer* debugLayer = NULL;
 
 int width;
@@ -292,7 +295,7 @@ void checkGLError(void)
     }
 }
 
-struct NodeGPUData
+struct NodeGPUDataTransformer
 {
     nutty::DeviceBuffer<uint> nodeIndexToLeafIndex;
     nutty::DeviceBuffer<uint> lineartreeContent;
@@ -308,7 +311,7 @@ struct NodeGPUData
     CTuint leafIndex;
     CTuint startPos;
 
-    NodeGPUData(void) : leafIndex(0), startPos(0)
+    NodeGPUDataTransformer(void) : leafIndex(0), startPos(0)
     {
 
     }
@@ -344,11 +347,9 @@ struct NodeGPUData
     }
 };
 
-void updateTree(ICTTree* tree, NodeGPUData* gpuData)
+void updateTree(ICTTree* tree, NodeGPUDataTransformer* gpuData)
 {
     chimera::util::HTimer loadTimer;
-    ICTTreeNode* node;
-    CT_SAFE_CALL(CTGetRootNode(tree, &node));
 
     {
         print("Building Tree ...\n");
@@ -365,47 +366,68 @@ void updateTree(ICTTree* tree, NodeGPUData* gpuData)
     CTuint leafs;
     CT_SAFE_CALL(CTGetLeafNodeCount(tree, &leafs));
 
-    gpuData->Reset();
-    gpuData->Resize(leafs, nodeCount);
-    loadTimer.Start();
     print("Getting Tree Data ...\n");
+    loadTimer.Start();
     
-    gpuData->Fill(tree, eCT_NODE_IS_LEAF, gpuData->lineartreeNodeIsLeaf);
-    gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_START_INDEX, gpuData->lineartreeContentStart);
-    gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_COUNT, gpuData->lineartreeContentCount);
-    gpuData->Fill(tree, eCT_NODE_LEFT_CHILD, gpuData->lineartreeLeftNode);
-    gpuData->Fill(tree, eCT_NODE_RIGHT_CHILD, gpuData->lineartreeRightNode);
-    gpuData->Fill(tree, eCT_NODE_SPLITS, gpuData->lineartreeSplit);
-    gpuData->Fill(tree, eCT_NODE_SPLIT_AXIS, gpuData->lineartreeSplitAxis);
-    gpuData->Fill(tree, eCT_NODE_TO_LEAF_INDEX, gpuData->nodeIndexToLeafIndex);
+    TreeNodes gpuTree;
+    CT_TREE_DEVICE type;
+    CT_SAFE_CALL(CTGetTreeDeviceType(tree, &type));
+
+    if(type == eCT_CPU)
+    {
+        gpuData->Reset();
+        gpuData->Resize(leafs, nodeCount);
+
+
+        gpuData->Fill(tree, eCT_NODE_IS_LEAF, gpuData->lineartreeNodeIsLeaf);
+        gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_START_INDEX, gpuData->lineartreeContentStart);
+        gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_COUNT, gpuData->lineartreeContentCount);
+        gpuData->Fill(tree, eCT_NODE_LEFT_CHILD, gpuData->lineartreeLeftNode);
+        gpuData->Fill(tree, eCT_NODE_RIGHT_CHILD, gpuData->lineartreeRightNode);
+        gpuData->Fill(tree, eCT_NODE_SPLITS, gpuData->lineartreeSplit);
+        gpuData->Fill(tree, eCT_NODE_SPLIT_AXIS, gpuData->lineartreeSplitAxis);
+        gpuData->Fill(tree, eCT_NODE_TO_LEAF_INDEX, gpuData->nodeIndexToLeafIndex);
+
+        gpuTree.leafIndex = gpuData->nodeIndexToLeafIndex.Begin()();
+        gpuTree.contentCount = gpuData->lineartreeContentCount.Begin()();
+        gpuTree.contentStart = gpuData->lineartreeContentStart.Begin()();
+
+        CTuint d;
+        CTGetDepth(tree, &d);
+        if(d > 0)
+        {
+            gpuTree._left = gpuData->lineartreeLeftNode.Begin()();
+            gpuTree._right = gpuData->lineartreeRightNode.Begin()();
+            gpuTree.split = gpuData->lineartreeSplit.Begin()();
+            gpuTree.splitAxis = gpuData->lineartreeSplitAxis.Begin()();
+        }
+
+        gpuTree.isLeaf = gpuData->lineartreeNodeIsLeaf.Begin()();
+
+        uint cnt;
+        const void* memory;
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, eCT_LEAF_NODE_PRIM_IDS));
+        gpuData->lineartreeContent.Resize(cnt / sizeof(uint));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(gpuData->lineartreeContent.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
+
+        gpuTree.content = gpuData->lineartreeContent.Begin()();
+    }
+    else if(type == eCT_GPU)
+    {
+        CTuint cnt;
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.isLeaf, eCT_NODE_IS_LEAF));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.contentStart, eCT_LEAF_NODE_PRIM_START_INDEX));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.contentCount, eCT_LEAF_NODE_PRIM_COUNT));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree._left, eCT_NODE_LEFT_CHILD));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree._right, eCT_NODE_RIGHT_CHILD));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.split, eCT_NODE_SPLITS));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.splitAxis, eCT_NODE_SPLIT_AXIS));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.leafIndex, eCT_NODE_TO_LEAF_INDEX));
+        CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, (const void**)&gpuTree.content, eCT_LEAF_NODE_PRIM_IDS));
+    }
 
     loadTimer.Stop();
     print("Traversing Tree took '%f' Seconds\n", loadTimer.GetSeconds());
-    //gpuData->Copy();
-    
-    uint cnt;
-    const void* memory;
-    CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, eCT_LEAF_NODE_PRIM_IDS));
-    gpuData->lineartreeContent.Resize(cnt / sizeof(uint));
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(gpuData->lineartreeContent.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
-
-    TreeNodes gpuTree;
-    gpuTree.leafIndex = gpuData->nodeIndexToLeafIndex.Begin()();
-    gpuTree.contentCount = gpuData->lineartreeContentCount.Begin()();
-    gpuTree.contentStart = gpuData->lineartreeContentStart.Begin()();
-    gpuTree.content = gpuData->lineartreeContent.Begin()();
-
-    CTuint d;
-    CTGetDepth(tree, &d);
-    if(d > 0)
-    {
-        gpuTree._left = gpuData->lineartreeLeftNode.Begin()();
-        gpuTree._right = gpuData->lineartreeRightNode.Begin()();
-        gpuTree.split = gpuData->lineartreeSplit.Begin()();
-        gpuTree.splitAxis = gpuData->lineartreeSplitAxis.Begin()();
-    }
-
-    gpuTree.isLeaf = gpuData->lineartreeNodeIsLeaf.Begin()();
 
     RT_BindTree(gpuTree);
 }
@@ -555,6 +577,39 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
     return handle;
 }
 
+void createTestTree(CTuint type)
+{
+    ICTTree* tree;
+    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, type));
+
+    GPUTraceData triGPUData;
+    GeoHandle hhandle;
+    AddGeometry(triGPUData, tree, atlas, "empty_room.obj", &hhandle);
+
+    std::vector<GeoHandle> cubeHandles;
+
+    chimera::util::Mat4 model;
+    CTuint addSum = 12*3;
+    uint c = 1;
+    for(int i = 0; i < c; ++i)
+    {
+        int s = (int)sqrt(c);
+        CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "cube.obj", &hhandle);
+        CTuint sumcopy = addSum;
+        hhandle.start += addSum;
+        hhandle.end += addSum;
+        cubeHandles.push_back(hhandle);
+        addSum += (hhandle.end - hhandle.start);
+        model.SetTranslation(1,4,1);
+        //model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+        CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+    }
+
+    CT_SAFE_CALL(CTUpdate(tree));
+
+    CT_SAFE_CALL(CTReleaseTree(tree));
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int nCmdShow)
 {
 
@@ -622,10 +677,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     RT_Init(twidth, theight);
 
-    cuTextureAtlas* atlas = new cuTextureAtlas();
+    atlas = new cuTextureAtlas();
     atlas->Init();
 
-    CT_SAFE_CALL(CTInit(CT_ENABLE_CUDA_ACCEL | CT_TREE_ENABLE_DEBUG_LAYER));
+    CT_SAFE_CALL(CTInit(0));
+
+    createTestTree(CT_CREATE_TREE_CPU);
+    print("\n\n\n");
+    createTestTree(CT_CREATE_TREE_GPU);
+
+    return 0;
 
     ICTTree* tree;
     CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_GPU));
@@ -662,7 +723,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     CT_SAFE_CALL(CTGetPrimitiveCount(tree, &vertexCount));
     vertexCount *= 3;
 
-    NodeGPUData* nodeGPUData = new NodeGPUData();
+    NodeGPUDataTransformer* nodeGPUData = new NodeGPUDataTransformer();
 
     Triangles tris;
     tris.materials = triGPUData.materials.Begin()();

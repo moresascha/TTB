@@ -1,8 +1,10 @@
 #pragma once
+
 #include "tree.h"
 #include <Nutty.h>
 #include "geometry.h"
 #include <DeviceBuffer.h>
+#include <cuda/cuda_helper.h>
 #include "memory.h"
 #include "shared_types.h"
 
@@ -28,7 +30,7 @@ class DoubleBuffer
 {
 private:
     nutty::DeviceBuffer<T> m_buffer[2];
-    byte m_current;
+    CTbyte m_current;
 
 public:
     DoubleBuffer(void) :  m_current(0)
@@ -44,10 +46,15 @@ public:
         }
     }
 
-    nutty::DeviceBuffer<T>& Get(byte index)
+    nutty::DeviceBuffer<T>& Get(CTbyte index)
     {
         assert(index < 2);
         return m_buffer[index];
+    }
+
+    nutty::DeviceBuffer<T>& operator[](CTbyte index)
+    {
+        return Get(index);
     }
 
     nutty::DeviceBuffer<T>& GetCurrent(void)
@@ -72,69 +79,69 @@ __forceinline __device__ __host__ uint elemsBeforeLevel(byte l)
     return (1 << l) - 1;
 }
 
-__forceinline __device__ __host__ uint elemsOnLevel(byte l)
+__forceinline __device__ __host__ CTuint elemsOnLevel(byte l)
 {
     return (1 << l);
 }
 
-__forceinline __device__ __host__ uint elemsBeforeNextLevel(byte l)
+__forceinline __device__ __host__ CTuint elemsBeforeNextLevel(byte l)
 {
     return elemsBeforeLevel(l + 1);
 }
 
 struct Primitive
 {
-    uint* primIndex;
-    uint* nodeIndex;
-    uint* prefixSum;
+    CTuint* primIndex;
+    CTuint* nodeIndex;
+    CTuint* prefixSum;
 };
 
-struct IndexedEdge
+struct IndexedEvent
 {
-    uint index;
-    float v;
+    CTuint index;
+    CTreal v;
 };
 
 struct Edge
 {
-    byte* type;
-    IndexedEdge* indexedEdge;
-    uint* nodeIndex;
-    uint* primId;
-    uint* prefixSum;
+    CTbyte* type;
+    IndexedEvent* indexedEdge;
+    CTuint* nodeIndex;
+    CTuint* primId;
+    CTuint* prefixSum;
 };
 
-struct IndexedSplit
+struct IndexedSAHSplit
 {
-    float sah;
-    uint index;
+    CTreal sah;
+    CTuint index;
 };
 
 struct Split
 {
-    IndexedSplit* indexedSplit;
-    byte* axis;
-    uint* below;
-    uint* above;
-    float* v;
+    IndexedSAHSplit* indexedSplit;
+    CTbyte* axis;
+    CTuint* below;
+    CTuint* above;
+    CTreal* v;
 };
 
 struct Node
 {
     BBox* aabb;
-    byte* isLeaf;
-    float* split;
-    byte* splitAxis;
-    uint* contentCount;
-    uint* contentStart;
-    uint* content;
-    uint* above;
-    uint* below;
+    CTbyte* isLeaf;
+    CTreal* split;
+    CTbyte* splitAxis;
+    CTuint* contentCount;
+    CTuint* contentStart;
+    CTuint* content;
+    CTuint* above;
+    CTuint* below;
 };
 
 struct EdgeSort
 {
-    __device__ char operator()(IndexedEdge t0, IndexedEdge t1)
+    __device__ char operator()(IndexedEvent t0, IndexedEvent t1)
     {
         return t0.v > t1.v;
     }
@@ -142,7 +149,7 @@ struct EdgeSort
 
 struct ReduceIndexedSplit
 {
-    __device__ __host__ IndexedSplit operator()(IndexedSplit t0, IndexedSplit t1)
+    __device__ __host__ IndexedSAHSplit operator()(IndexedSAHSplit t0, IndexedSAHSplit t1)
     {
         return t0.sah <= t1.sah ? t0 : t1;
     }
@@ -163,71 +170,69 @@ struct ReduceIndexedSplit
 
 class cuKDTree : public ICTTree
 {
-private:
+protected:
     ICTTreeNode* m_node;
     CT_GEOMETRY_TOPOLOGY m_topo;
     CTuint m_interiorNodesCount;
     CTuint m_leafNodesCount;
-    byte m_depth;
-    byte m_maxDepth;
+    CTbyte m_depth;
+    CTbyte m_maxDepth;
     CTuint m_flags;
     CTbool m_initialized;
     AABB m_sceneAABB;
 
-    nutty::DeviceBuffer<uint> m_depthFirstMask;
+    nutty::DeviceBuffer<CTreal3> m_orginalVertices;
+    nutty::DeviceBuffer<CTreal3> m_currentTransformedVertices;
 
-    nutty::DeviceBuffer<CTreal3> m_primitives;
-    nutty::DeviceBuffer<CTreal3> m_tprimitives;
+    nutty::DeviceBuffer<CTreal3> m_kdPrimitives;
 
-    nutty::DeviceBuffer<uint> m_edgeMask;
-    nutty::DeviceBuffer<uint> m_scannedEdgeMask;
-    nutty::DeviceBuffer<uint> m_edgeMaskSums;
+    nutty::DeviceBuffer<CTuint> m_edgeMask;
+    nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
+    nutty::DeviceBuffer<CTuint> m_edgeMaskSums;
 
-    nutty::DeviceBuffer<float3> m_bboxMin;
-    nutty::DeviceBuffer<float3> m_bboxMax;
+    nutty::DeviceBuffer<CTreal3> m_bboxMin;
+    nutty::DeviceBuffer<CTreal3> m_bboxMax;
     nutty::DeviceBuffer<BBox> m_sceneBBox;
 
-    nutty::HostBuffer<uint> m_hNodesContentCount;
+    nutty::HostBuffer<CTuint> m_hNodesContentCount;
 
     Node m_nodes;
     nutty::DeviceBuffer<BBox> m_nodesBBox;
-    nutty::DeviceBuffer<byte> m_nodesIsLeaf;
-    nutty::DeviceBuffer<byte> m_nodesSplitAxis;
-    nutty::DeviceBuffer<float> m_nodesSplit;
-    nutty::DeviceBuffer<uint> m_nodesContentCount;
-    nutty::DeviceBuffer<uint> m_nodesStartAdd;
-    nutty::DeviceBuffer<uint> m_nodesAbove;
-    nutty::DeviceBuffer<uint> m_nodesBelow;
+    nutty::DeviceBuffer<CTbyte> m_nodesIsLeaf;
+    nutty::DeviceBuffer<CTbyte> m_nodesSplitAxis;
+    nutty::DeviceBuffer<CTreal> m_nodesSplit;
+    nutty::DeviceBuffer<CTuint> m_nodesContentCount;
+    nutty::DeviceBuffer<CTuint> m_nodesStartAdd;
 
-    Node m_dfoNodes;
-    nutty::DeviceBuffer<byte> m_dfoNodesIsLeaf;
-    nutty::DeviceBuffer<byte> m_dfoNodesSplitAxis;
-    nutty::DeviceBuffer<float> m_dfoNodesSplit;
-    nutty::DeviceBuffer<uint> m_dfoNodesContentCount;
-    nutty::DeviceBuffer<uint> m_dfoNodesStartAdd;
+    nutty::DeviceBuffer<CTuint> m_nodesAbove;
+    nutty::DeviceBuffer<CTuint> m_nodesBelow;
 
     Split m_splits;
-    nutty::DeviceBuffer<IndexedSplit> m_splitsIndexedSplit;
-    nutty::DeviceBuffer<float> m_splitsSplit;
-    nutty::DeviceBuffer<byte> m_splitsAxis;
-    nutty::DeviceBuffer<uint> m_splitsAbove;
-    nutty::DeviceBuffer<uint> m_splitsBelow;
+    nutty::DeviceBuffer<IndexedSAHSplit> m_splitsIndexedSplit;
+    nutty::DeviceBuffer<CTreal> m_splitsSplit;
+    nutty::DeviceBuffer<CTbyte> m_splitsAxis;
+    nutty::DeviceBuffer<CTuint> m_splitsAbove;
+    nutty::DeviceBuffer<CTuint> m_splitsBelow;
 
     Edge m_edges[2];
-    nutty::DeviceBuffer<IndexedEdge> m_edgesIndexedEdge;
-    DoubleBuffer<byte> m_edgesType;
-    DoubleBuffer<uint> m_edgesNodeIndex;
-    DoubleBuffer<uint> m_edgesPrimId;
-    DoubleBuffer<uint> m_edgesPrefixSum;
+    nutty::DeviceBuffer<IndexedEvent> m_edgesIndexedEdge;
+    DoubleBuffer<CTbyte> m_edgesType;
+    DoubleBuffer<CTuint> m_edgesNodeIndex;
+    DoubleBuffer<CTuint> m_edgesPrimId;
+    DoubleBuffer<CTuint> m_edgesPrefixSum;
+    nutty::DeviceBuffer<CTuint> m_scannedEdgeTypeStartMask;
+    nutty::DeviceBuffer<CTuint> m_scannedEdgeTypeEndMask;
+    nutty::DeviceBuffer<CTuint> m_edgeTypeMaskSums;
 
     Primitive m_nodesContent;
-    nutty::DeviceBuffer<uint> m_primIndex;
-    nutty::DeviceBuffer<uint> m_primNodeIndex;
-    nutty::DeviceBuffer<uint> m_primPrefixSum;
+    nutty::DeviceBuffer<CTuint> m_primIndex;
+    nutty::DeviceBuffer<CTuint> m_primNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_primPrefixSum;
 
     nutty::DeviceBuffer<BBox> m_primAABBs;
     nutty::DeviceBuffer<BBox> m_tPrimAABBs;
 
+    std::vector<CTulong> m_linearGeoHandles;
     std::map<CTGeometryHandle, GeometryRange> m_handleRangeMap;
 
 public:
@@ -244,9 +249,9 @@ public:
         return CT_SUCCESS;
     }
 
-    CT_RESULT Init(CTuint flags);
+    virtual CT_RESULT Init(CTuint flags);
 
-    CT_RESULT Update(void);
+    virtual CT_RESULT Update(void) = 0;
 
     ICTTreeNode* GetRoot(void) const
     {
@@ -290,7 +295,7 @@ public:
 
     CTuint GetPrimitiveCount(void) const
     {
-        return (CTuint)m_primitives.Size() / 3;
+        return (CTuint)m_orginalVertices.Size() / 3;
     }
 
     CT_RESULT Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData = NULL);
@@ -306,7 +311,30 @@ public:
         return &m_sceneAABB;
     }
 
-    ~cuKDTree(void);
+    virtual ~cuKDTree(void);
 
     add_uuid_header(cuKDTree);
+};
+
+class cuKDTreeBitonicSearch : public cuKDTree
+{
+private:
+    void ClearBuffer(void);
+    void GrowMemory(void);
+    void InitBuffer(void);
+
+public:
+    cuKDTreeBitonicSearch(void)
+    {
+
+    }
+
+    CT_RESULT Update(void);
+
+    ~cuKDTreeBitonicSearch(void)
+    {
+
+    }
+
+    add_uuid_header(cuKDTreeBitonicSearch);
 };
