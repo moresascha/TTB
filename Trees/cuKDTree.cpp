@@ -48,7 +48,7 @@ CT_RESULT cuKDTree::AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle)
 
 void cuKDTree::SetDepth(CTbyte depth)
 {
-    m_depth = clamp(depth, 0, m_maxDepth);
+    //m_depth = clamp(depth, 0, m_depth);
 }
 
 const CTGeometryHandle* cuKDTree::GetGeometry(CTuint* gc)

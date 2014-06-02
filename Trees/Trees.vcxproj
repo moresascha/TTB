@@ -101,7 +101,16 @@
     </Link>
     <CudaCompile>
       <CodeGeneration>compute_35,sm_35</CodeGeneration>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <GenerateRelocatableDeviceCode>false</GenerateRelocatableDeviceCode>
+      <CudaRuntime>Static</CudaRuntime>
     </CudaCompile>
+    <CudaLink>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+    </CudaLink>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -134,8 +143,14 @@
       <AdditionalLibraryDirectories>../../Nutty/lib;../libs;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
     </Link>
     <CudaCompile>
-      <CodeGeneration>compute_20,sm_20</CodeGeneration>
+      <CodeGeneration>compute_35,sm_35</CodeGeneration>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <PtxAsOptionV>true</PtxAsOptionV>
     </CudaCompile>
+    <CudaLink>
+      <AdditionalDependencies>cudadevrt.lib</AdditionalDependencies>
+    </CudaLink>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="buffer_print.h" />
@@ -148,6 +163,7 @@
     <ClInclude Include="ct_error.h" />
     <ClInclude Include="ct_primitive.h" />
     <ClInclude Include="ct_types.h" />
+    <ClInclude Include="device_heap.h" />
     <ClInclude Include="output.h" />
     <ClInclude Include="ct_runtime.h" />
     <ClInclude Include="cuKDTree.h">
@@ -164,6 +180,7 @@
     <ClInclude Include="vec_functions.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="buffer_print.cpp" />
     <ClCompile Include="cpuKDTree.cpp" />
     <ClCompile Include="ct.cpp" />
     <ClCompile Include="ct_error.cpp" />
@@ -179,14 +196,20 @@
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_35,sm_35</CodeGeneration>
     </CudaCompile>
-    <CudaCompile Include="cuKDTreeBitonicSearch.cu" />
-    <CudaCompile Include="tmp.cu">
-      <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
+    <CudaCompile Include="cuKDTreeBitonicSearch.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CudaCompile>
+    <CudaCompile Include="dpKDTree.cu">
+      <TargetMachinePlatform Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">64</TargetMachinePlatform>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="device_heap.cu" />
     <CudaCompile Include="transform.cu" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="kd_kernel.cuh" />
+    <None Include="kd_kernel.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

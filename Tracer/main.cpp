@@ -605,6 +605,8 @@ void createTestTree(CTuint type)
         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
     }
 
+    //CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+
     CT_SAFE_CALL(CTUpdate(tree));
 
     CT_SAFE_CALL(CTReleaseTree(tree));
@@ -682,9 +684,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     CT_SAFE_CALL(CTInit(0));
 
-    createTestTree(CT_CREATE_TREE_CPU);
-    print("\n\n\n");
     createTestTree(CT_CREATE_TREE_GPU);
+    print("\n\n\n");
+   // createTestTree(CT_CREATE_TREE_CPU);
+
+    CTuint d = (CTuint)log(220000);
 
     return 0;
 

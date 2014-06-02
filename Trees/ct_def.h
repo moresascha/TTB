@@ -23,6 +23,7 @@ enum CT_RESULT
 
 #define CT_CREATE_TREE_CPU (1 << 0)
 #define CT_CREATE_TREE_GPU (1 << 1)
+#define CT_CREATE_TREE_GPU_DP (1 << 2)
 
 #define __uuidof(clazz) __uuid<##clazz>()
 

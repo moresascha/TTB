@@ -19,7 +19,7 @@ __device__ __forceinline CTreal3 transform4f(float4* m3x3l, const CTreal4* vecto
     return res;
 }
 
-__constant__ CTreal4 g_matrix[4]; 
+__constant__ CTreal4 g__matrix[4]; 
 __global__ void __transform3f(const CTreal3* in, CTreal3* out, uint N)
 {
     uint id = threadIdx.x + blockDim.x * blockIdx.x;
@@ -32,7 +32,7 @@ __global__ void __transform3f(const CTreal3* in, CTreal3* out, uint N)
 
     CTreal4 v = make_real4(_n.x, _n.y, _n.z, 1);
 
-    out[id] = transform4f(g_matrix, &v);
+    out[id] = transform4f(g__matrix, &v);
 }
 
 extern "C" void cudaTransformVector(nutty::DeviceBuffer<CTreal3>::iterator& v_in, nutty::DeviceBuffer<CTreal3>::iterator& v_out, const CTreal4* matrix, CTuint N)
@@ -41,7 +41,7 @@ extern "C" void cudaTransformVector(nutty::DeviceBuffer<CTreal3>::iterator& v_in
 
     grid.x = nutty::cuda::GetCudaGrid(N, group.x);
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_matrix, matrix, 4 * sizeof(CTreal4), 0, cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g__matrix, matrix, 4 * sizeof(CTreal4), 0, cudaMemcpyHostToDevice));
 
     __transform3f<<<grid, group>>>(v_in(), v_out(), N);
 }

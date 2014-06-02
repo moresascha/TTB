@@ -4,7 +4,7 @@
 #endif
 
 #include "cuKDTree.h"
-#include "kd_kernel.cuh"
+#include "kd_kernel.h"
 #include "shared_kernel.h"
 #include "shared_types.h"
 #include <Reduce.h>
@@ -15,36 +15,6 @@
 #include <Functions.h>
 #include <cuda/Globals.cuh>
 #include "buffer_print.h"
-
-std::ostream& operator<<(std::ostream &out, const IndexedSAHSplit& t)
-{
-    out << "SAH="<< (t.sah == FLT_MAX ? -1.0f : t.sah);//"[" << (t.sah == FLT_MAX ? -1.0f : t.sah) << ", " << t.index << "]";
-    return out;
-}
-
-std::ostream& operator<<(std::ostream &out, const IndexedEvent& t)
-{
-    out << "Split=" << t.v;//"[" << t.v << ", " << t.index << "]";
-    return out;
-}
-
-std::ostream& operator<<(std::ostream &out, const BBox& t)
-{
-    out << "[" << t._min.x << "," << t._min.y << "," << t._min.z << "|" << t._max.x << "," << t._max.y << "," << t._max.z << "]";
-    return out;
-}
-
-std::ostream& operator<<(std::ostream &out, const AABB& t)
-{
-    out << "[" << t.GetMin().x << "," << t.GetMin().y << "," << t.GetMin().z << "|" << t.GetMax().x << "," << t.GetMax().y << "," << t.GetMax().z << "]";
-    return out;
-}
-
-std::ostream& operator<<(std::ostream &out, const CTbyte& t)
-{
-    out << (CTuint)t;
-    return out;
-}
 
 template<>
 struct ShrdMemory<IndexedSAHSplit>
@@ -140,12 +110,12 @@ void cuKDTreeBitonicSearch::InitBuffer(void)
     m_nodesIsLeaf.Resize(maxNodeCount);
     m_nodesSplit.Resize(maxInteriorNodesCount);
     m_nodesStartAdd.Resize(maxNodeCount);
-    m_nodesSplitAxis.Resize(maxNodeCount);
+    m_nodesSplitAxis.Resize(maxInteriorNodesCount);
 
     m_nodesContentCount.Resize(maxNodeCount);
     m_nodesAbove.Resize(maxNodeCount);
     m_nodesBelow.Resize(maxNodeCount);
-    m_hNodesContentCount.Resize(elemsOnLevel(m_maxDepth-1));
+    m_hNodesContentCount.Resize(elemsOnLevel(m_depth-1));
 
     m_nodes.aabb = m_nodesBBox.GetDevicePtr()();
     m_nodes.isLeaf = m_nodesIsLeaf.GetDevicePtr()();
@@ -277,7 +247,6 @@ struct EdgeTypeOp
 
 CT_RESULT cuKDTreeBitonicSearch::Update(void)
 {
-
     if(!m_initialized)
     {
         InitBuffer();
@@ -316,20 +285,24 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
     m_nodesIsLeaf.Insert(0, m_depth == 0);
 
+    PRINT_BUFFER(m_primIndex);
+    PRINT_BUFFER(m_primNodeIndex);
+    PRINT_BUFFER(m_primPrefixSum);
+
     for(byte d = 0; d < m_depth; ++d)
     {
         uint elementBlock = primitiveCount < 256 ? primitiveCount : 256;
         uint elementGrid = nutty::cuda::GetCudaGrid(primitiveCount, elementBlock);
 
-//         nutty::ZeroMem(m_edgeMask);
-//         nutty::ZeroMem(m_scannedEdgeMask);
+        nutty::ZeroMem(m_edgeMask);
+        nutty::ZeroMem(m_scannedEdgeMask);
 
-        Edge edgesSrc = m_edges[0];
-        Edge edgesDst = m_edges[1];
+        Event edgesSrc = m_edges[0];
+        Event edgesDst = m_edges[1];
         
         DEVICE_SYNC_CHECK();
 
-        createEdges<<<elementGrid, elementBlock>>>(edgesSrc, m_nodes, m_primAABBs.Begin()(), m_nodesContent, d, primitiveCount);
+        createEvents<<<elementGrid, elementBlock>>>(edgesSrc, m_nodes, m_primAABBs.Begin()(), m_nodesContent, d, primitiveCount);
 
         DEVICE_SYNC_CHECK();
 
@@ -346,13 +319,15 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
         for(int i = 0; i < (1 << d); ++i)
         {
-            uint length = 2 * m_hNodesContentCount[i];
-            if(length == 0)
+            uint cc = m_hNodesContentCount[i];
+            if(cc <= MAX_ELEMENTS_PER_LEAF)
             {
                 continue;
             }
 
-            nutty::Sort(m_edgesIndexedEdge.Begin() + start, m_edgesIndexedEdge.Begin() + start + length, EdgeSort());
+            uint length = 2 * cc;
+
+            nutty::Sort(m_edgesIndexedEdge.Begin() + start, m_edgesIndexedEdge.Begin() + start + length, EventSort());
             
             DEVICE_SYNC_CHECK();
 
@@ -383,8 +358,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
         DEVICE_SYNC_CHECK();
 //         PrintBuffer(m_edgesType[1], edgeCount);
-//         PrintBuffer(m_scannedEdgeTypeStartMask, edgeCount);
-//         PrintBuffer(m_scannedEdgeTypeEndMask, edgeCount);
+        PRINT_BUFFER_N(m_scannedEdgeTypeStartMask, edgeCount);
+        PRINT_BUFFER_N(m_scannedEdgeTypeEndMask, edgeCount);
 
         computeSAHSplits<<<edgeGrid, edgeBlock>>>(edgesDst, m_nodes, m_splits, m_nodesContent, m_scannedEdgeTypeStartMask.Begin()(), m_scannedEdgeTypeEndMask.Begin()(), d, edgeCount);
 
@@ -394,20 +369,22 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         for(int i = 0; i < edgeCount; ++i)
         {
             CTbyte t = m_edgesType[1][i] ^ 1;
-            ct_printf("[%d %d] [%d %d] Split=%.4f SAH=%.4f\n", m_splitsBelow[i], m_splitsAbove[i], m_scannedEdgeTypeEndMask[i] - t, edgeCount/2 - m_scannedEdgeTypeStartMask[i], m_edgesIndexedEdge[i].v, m_splitsIndexedSplit[i].sah);
+          //  ct_printf("[%d %d] [%d %d] Split=%.4f SAH=%.4f\n", m_splitsBelow[i], m_splitsAbove[i], m_scannedEdgeTypeEndMask[i] - t, edgeCount/2 - m_scannedEdgeTypeStartMask[i], m_edgesIndexedEdge[i].v, m_splitsIndexedSplit[i].sah);
         }
-        ct_printf("\n\n");
+       // ct_printf("\n\n");
         DEVICE_SYNC_CHECK();
         
         start = 0;
 
         for(int i = 0; i < (1 << d); ++i)
         {
-            uint length = 2 * m_hNodesContentCount[i];
-            if(length == 0)
+            uint cc = m_hNodesContentCount[i];
+            if(cc <= MAX_ELEMENTS_PER_LEAF)
             {
                 continue;
             }
+
+            uint length = 2 * cc;
 
             IndexedSAHSplit neutralSplit;
             neutralSplit.index = 0;
@@ -434,9 +411,14 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
         DEVICE_SYNC_CHECK();
 
-        nutty::ExclusivePrefixSumScan(m_edgeMask.Begin(), m_edgeMask.Begin() + edgeCount + 1, m_scannedEdgeMask.Begin(), m_edgeMaskSums.Begin());
-        //PrintBuffer(m_edgeMask);
-       // PrintBuffer(m_scannedEdgeMask);
+        nutty::ExclusivePrefixSumScan(m_edgeMask.Begin(), m_edgeMask.End(), m_scannedEdgeMask.Begin(), m_edgeMaskSums.Begin());
+        
+        //PRINT_BUFFER_N(m_edgesType[1], edgeCount);
+        
+         PRINT_BUFFER_N(m_edgeMask, edgeCount);
+
+        PRINT_BUFFER_N(m_scannedEdgeMask, edgeCount);
+
         DEVICE_SYNC_CHECK();
         
 //         PrintBuffer(m_nodesContentCount);
@@ -456,15 +438,23 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
         //PrintBuffer(m_primIndex);
 
-        compactContentFromEdges<<<edgeGrid, edgeBlock>>>(edgesDst, m_nodes, m_nodesContent, m_edgeMask.Begin()(), m_scannedEdgeMask.Begin()(), d, edgeCount);
+        /*nutty::DeviceBuffer<CTuint> e_scannedEdgeTypeStartMask(m_scannedEdgeTypeStartMask.Size());
+        nutty::MakeExclusive(e_scannedEdgeTypeStartMask.Begin(), m_scannedEdgeTypeStartMask.Begin(), m_scannedEdgeTypeStartMask.End(), m_edgesType[1].Begin());
+
+        nutty::DeviceBuffer<CTuint> e_scannedEdgeTypeEndMask(m_scannedEdgeTypeStartMask.Size());
+        nutty::MakeExclusive(e_scannedEdgeTypeEndMask.Begin(), m_scannedEdgeTypeEndMask.Begin(), m_scannedEdgeTypeEndMask.End(), m_edgesType[1].Begin());
+
+        PRINT_BUFFER_N(e_scannedEdgeTypeStartMask, edgeCount);
+        PRINT_BUFFER_N(e_scannedEdgeTypeEndMask, edgeCount);
+        PRINT_BUFFER_N(m_edgesType[1], edgeCount);*/
+
+        setNodesContent<<<edgeGrid, edgeBlock>>>(edgesDst, m_nodes, m_nodesContent, m_splits, m_edgeMask.Begin()(), m_scannedEdgeMask.Begin()(), d, edgeCount);
 
         DEVICE_SYNC_CHECK();
 
-        //PrintBuffer(m_primIndex);
-
         uint lastCnt = primitiveCount;
         primitiveCount = m_scannedEdgeMask[edgeCount - 1] + m_edgeMask[edgeCount - 1];
-
+        
         if(primitiveCount == 0)
         {
             primitiveCount = lastCnt;
@@ -477,6 +467,18 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         }
 
         DEVICE_SYNC_CHECK();
+
+        PrintBuffer(m_nodesBBox);
+        PrintBuffer(m_nodesIsLeaf);
+        PrintBuffer(m_nodesSplit);
+        PrintBuffer(m_nodesSplitAxis);
+
+        PrintBuffer(m_nodesContentCount);
+        PrintBuffer(m_nodesStartAdd);
+
+        PRINT_BUFFER(m_primIndex);
+        PRINT_BUFFER(m_primNodeIndex);
+        PRINT_BUFFER(m_primPrefixSum);
     }
 
     //if(m_currentTransformedPrimitives.Size() < primitiveCount)
@@ -488,21 +490,10 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     uint block = primitiveCount < 256 ? primitiveCount : 256;
     uint grid = nutty::cuda::GetCudaGrid(primitiveCount, block);
 
-    postprocess<<<grid, block>>>(m_currentTransformedVertices.Begin()(), m_kdPrimitives.Begin()(), m_nodesContent, primitiveCount);
+    //postprocess<<<grid, block>>>(m_currentTransformedVertices.Begin()(), m_kdPrimitives.Begin()(), m_nodesContent, primitiveCount);
     
     DEVICE_SYNC_CHECK();
- 
-    PrintBuffer(m_nodesBBox);
-    PrintBuffer(m_nodesIsLeaf);
-    PrintBuffer(m_nodesSplit);
-    PrintBuffer(m_nodesSplitAxis);
 
-    PrintBuffer(m_nodesContentCount);
-    PrintBuffer(m_nodesStartAdd);
-
-    PrintBuffer(m_primIndex);
-    //PrintBuffer(m_primNodeIndex);
-   // PrintBuffer(m_primPrefixSum);
      
     return CT_SUCCESS;
 }

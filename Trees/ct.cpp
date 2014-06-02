@@ -64,14 +64,22 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
             {
             case eCT_SAH :
                 {
-                    ICTTree* _tree;
+                    ICTTree* _tree = NULL;
                     if(desc->flags & CT_CREATE_TREE_CPU)
                     {
                        _tree = CTMemAllocObject<cpuKDTree>();
                     }
-                    else
+                    else if(desc->flags & CT_CREATE_TREE_GPU)
                     {
                         _tree = CTMemAllocObject<cuKDTreeBitonicSearch>();
+                    }
+                    else if(desc->flags & CT_CREATE_TREE_GPU_DP)
+                    {
+                        _tree = CTMemAllocObject<cudpKDTree>();
+                    }
+                    else
+                    {
+                        return CT_INVALID_ENUM;
                     }
                     *tree = _tree;
                     if(_tree == NULL)
