@@ -28,6 +28,7 @@ __global__ void __transform3f(const CTreal3* in, CTreal3* out, uint N)
     {
         return;
     }
+
     CTreal3 _n = in[id];
 
     CTreal4 v = make_real4(_n.x, _n.y, _n.z, 1);

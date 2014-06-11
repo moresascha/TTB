@@ -600,7 +600,7 @@ void createTestTree(CTuint type)
         hhandle.end += addSum;
         cubeHandles.push_back(hhandle);
         addSum += (hhandle.end - hhandle.start);
-        model.SetTranslation(1,4,1);
+        model.SetTranslation(0,4,0);
         //model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
     }
@@ -619,10 +619,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 // #define _CRTDBG_MAP_ALLOC
 //     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_CHECK_CRT_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_EVERY_16_DF);
 // #endif
-
+    
     width = (1024 * 3) / 2;
     height = (512 * 3) / 2;
-
+    
     HWND hwnd = CreateScreen(hInstance, WndProc, MY_CLASS, L"", width, height);
 
     RECT rect;
@@ -684,20 +684,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     CT_SAFE_CALL(CTInit(0));
 
-    createTestTree(CT_CREATE_TREE_GPU);
+    //createTestTree(CT_CREATE_TREE_CPU);
     print("\n\n\n");
-   // createTestTree(CT_CREATE_TREE_CPU);
-
-    CTuint d = (CTuint)log(220000);
+    createTestTree(CT_CREATE_TREE_GPU);
 
     return 0;
-
+    uint treeType = CT_CREATE_TREE_GPU;
     ICTTree* tree;
-    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, CT_CREATE_TREE_GPU));
+    CT_SAFE_CALL(CTCreateSAHKDTree(&tree, treeType));
 
-    GPUTraceData triGPUData;
+    GPUTraceData* triGPUData = new GPUTraceData();
     GeoHandle hhandle;
-    AddGeometry(triGPUData, tree, atlas, "empty_room.obj", &hhandle);
+    AddGeometry(*triGPUData, tree, atlas, "empty_room.obj", &hhandle);
 
     std::vector<GeoHandle> cubeHandles;
 
@@ -707,21 +705,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     for(int i = 0; i < c; ++i)
     {
         int s = (int)sqrt(c);
-        CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "cube.obj", &hhandle);
+        CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "cube.obj", &hhandle);
         CTuint sumcopy = addSum;
         hhandle.start += addSum;
         hhandle.end += addSum;
         cubeHandles.push_back(hhandle);
         addSum += (hhandle.end - hhandle.start);
-        model.SetTranslation(0,4,0);
-        //model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+        //model.SetTranslation(0,4,0);
+        model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
     }
 
-    //CTGeometryHandle handle = AddGeometry(triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
 
-    nutty::DeviceBuffer<Normal> normalsSave(triGPUData.triNormals.Size());
-    nutty::Copy(normalsSave.Begin(), triGPUData.triNormals.Begin(), triGPUData.triNormals.End());
+    nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
+    nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
 
     uint vertexCount;
     CT_SAFE_CALL(CTGetPrimitiveCount(tree, &vertexCount));
@@ -730,14 +728,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     NodeGPUDataTransformer* nodeGPUData = new NodeGPUDataTransformer();
 
     Triangles tris;
-    tris.materials = triGPUData.materials.Begin()();
-    tris.normals = triGPUData.triNormals.Begin()();
-    tris.texCoords = triGPUData.triTc.Begin()();
-    tris.matId = triGPUData.perVertexMatId.Begin()();
-
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMalloc(&tris.positions, vertexCount * sizeof(Position)));
-
-    RT_BindGeometry(tris);
+    tris.materials = triGPUData->materials.Begin()();
+    tris.normals = triGPUData->triNormals.Begin()();
+    tris.texCoords = triGPUData->triTc.Begin()();
+    tris.matId = triGPUData->perVertexMatId.Begin()();
 
     uint count;
     const cuTextureObj* textures = atlas->GetTextures(&count);
@@ -755,15 +749,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     chimera::util::Mat4 matrix;
     chimera::util::Mat4 cameraMatrix;
     float time = 0;
-    
-    //geoTransMatrix.SetTranslation(0,1,0);
+
+    //geoTransMatrix.SetTranslation(0,1,0); 
     updateTree(tree, nodeGPUData);
+    return 0;
     CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer)); //collectdata
 
     const void* memory = NULL; 
     CTuint cnt;
     CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+
+    if(treeType == CT_CREATE_TREE_CPU)
+    {
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMalloc(&tris.positions, vertexCount * sizeof(Position)));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+    }
+    else
+    {
+        tris.positions = (Position*)memory;
+    }
+
+    RT_BindGeometry(tris);
 
     MSG msg;
     chimera::util::HTimer traverseTimer;
@@ -786,7 +792,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         { 
             float time = timer.VGetTime() * 2 * 1e-4f;
             float dt = 1e-3f * timer.VGetLastMillis();
-//             static bool a = true;
+            static bool a = true;
 //             if(a)
 //             {
 //                 for(int i = 0; i < cubeHandles.size(); ++i)
@@ -796,23 +802,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 //                     model.SetRotateX(time + i/(float)cubeHandles.size());
 //                     model.RotateY(time + 0.5f*i/(float)cubeHandles.size());
 //                     model.RotateZ(time + i*i/(float)(float)cubeHandles.size());
-//                     model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+//                     model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s) + 6 * sin(time));
 // 
 //                     CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
 // 
 //                     RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start));
 //                 }
-// 
+//                 cudaDeviceSynchronize();
 //                 traverseTimer.Start();
 //                 updateTree(tree, nodeGPUData);
 //                 traverseTimer.Stop();
 // 
-//                 const void* memory = NULL; 
-//                 CTuint cnt;
-//                 CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
-//                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+//                 if(treeType == CT_CREATE_TREE_CPU)
+//                 {
+//                     const void* memory = NULL; 
+//                     CTuint cnt;
+//                     CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
+//                     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
+//                 }
 //             }
-//             a = false;
+            //a = false;
 
             computeMovement(dt);
 
@@ -939,14 +948,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     }
 
     delete debugLayer;
-
+    delete triGPUData;
     delete nodeGPUData;
     
     RT_Destroy();
     
     delete atlas;
     cudaFree(tris.materials);
-    cudaFree(tris.positions);
+    
+    if(treeType == CT_CREATE_TREE_CPU)
+    {
+        cudaFree(tris.positions);
+    }
+
     cudaFree(tris.normals);
     cudaFree(tris.texCoords);
     cudaFree(tris.matId);

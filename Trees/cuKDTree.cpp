@@ -6,6 +6,7 @@
 #include "geometry.h"
 #include "output.h"
 #include "shared_kernel.h"
+#include "ct_debug.h"
 
 cuKDTree::cuKDTree(void): m_depth(0xFF), m_initialized(false)
 {
@@ -16,9 +17,69 @@ CT_RESULT cuKDTree::Init(CTuint flags)
     return CT_SUCCESS;
 }
 
+void cuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
+{
+    if(m_nodes_IsLeaf[parent])
+    {
+        return;
+    }
+
+    CT_SPLIT_AXIS axis = (CT_SPLIT_AXIS)m_nodes_SplitAxis[parent];
+    CTreal split = m_nodes_Split[parent];
+
+    CTreal3 start;
+    CTreal3 end;
+
+    setAxis(start, axis, split);
+    setAxis(end, axis, split);
+
+    CTint other0 = (axis + 1) % 3;
+    CTint other1 = (axis + 2) % 3;
+
+    AABB aaba;// = m_linearNodeAABBs.Get(parent);
+
+    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
+    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
+    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
+    setAxis(end, other1, getAxis(aaba.GetMin(), other1));
+    dbLayer->DrawLine(start, end);
+
+    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
+    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
+    setAxis(end, other0, getAxis(aaba.GetMin(), other0));
+    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    dbLayer->DrawLine(start, end);
+
+    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
+    setAxis(start, other1, getAxis(aaba.GetMax(), other1));
+    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
+    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    dbLayer->DrawLine(start, end);
+
+    setAxis(start, other0, getAxis(aaba.GetMax(), other0));
+    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
+    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
+    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    dbLayer->DrawLine(start, end);
+
+    CTuint left = m_nodes_LeftChild[parent];
+    CTuint right = m_nodes_RightChild[parent];
+    _DebugDrawNodes(left, dbLayer);
+    _DebugDrawNodes(right, dbLayer);
+}
+
 CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
 {
-
+    checkState(m_initialized);
+    if(!m_sceneBBox.Size())
+    {
+        return CT_SUCCESS;
+    }
+    AABB aabb;
+    aabb.m_min = m_sceneBBox[0]._min;
+    aabb.m_max = m_sceneBBox[0]._max;
+    dbLayer->DrawWiredBox(aabb);
+   // _DebugDrawNodes(0, dbLayer);
     return CT_SUCCESS;
 }
 
@@ -58,8 +119,8 @@ const CTGeometryHandle* cuKDTree::GetGeometry(CTuint* gc)
 
 const CTreal* cuKDTree::GetRawPrimitives(CTuint* bytes) const
 {
-    *bytes = m_orginalVertices.ByteCount();
-    const CTreal3* ptr = m_orginalVertices.Begin()();
+    *bytes = m_currentTransformedVertices.Bytes();
+    const CTreal3* ptr = m_currentTransformedVertices.Begin()();
     return (const CTreal*)ptr;
 }
 
@@ -82,70 +143,70 @@ const void* cuKDTree::GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCo
 {
     switch(type)
     {
-//     case eCT_LEAF_NODE_PRIM_IDS :
-//         {
-//             *byteCount = m_linearPerLeafNodePrimitives.ByteCount();
-//             return m_linearPerLeafNodePrimitives.Begin();
-//         } break;
-//     case eCT_LEAF_NODE_PRIM_START_INDEX :
-//         {
-//             *byteCount = m_linearPerLeafNodePrimStartIndex.ByteCount();
-//             return m_linearPerLeafNodePrimStartIndex.Begin();
-//         } break;
-//     case eCT_LEAF_NODE_PRIM_COUNT :
-//         {
-//             *byteCount = m_linearPerLeafNodePrimCount.Bytes();
-//             return m_linearPerLeafNodePrimCount.Begin();
-//         } break;
-//     case eCT_NODE_PRIM_IDS :
-//         {
-//             *byteCount = m_linearPerNodePrimitives.Bytes();
-//             return m_linearPerNodePrimitives.Begin();
-//         } break;
-//     case eCT_PRIMITVES :
-//         {
-//             return GetRawPrimitives(byteCount);
-//         }
-//     case eCT_NODE_SPLITS :
-//         {
-//             *byteCount = m_linearNodeSplits.Bytes();
-//             return m_linearNodeSplits.Begin();
-//         }
-//     case eCT_NODE_SPLIT_AXIS :
-//         {
-//             *byteCount = m_linearNodeSplitAxis.Bytes();
-//             return m_linearNodeSplitAxis.Begin();
-//         }
-//     case eCT_NODE_RIGHT_CHILD :
-//         {
-//             *byteCount = m_linearNodeRight.Bytes();
-//             return m_linearNodeRight.Begin();
-//         }
-//     case eCT_NODE_LEFT_CHILD :
-//         {
-//             *byteCount = m_linearNodeLeft.Bytes();
-//             return m_linearNodeLeft.Begin();
-//         }
-//     case eCT_NODE_IS_LEAF :
-//         {
-//             *byteCount = m_linearNodeIsLeaf.Bytes();
-//             return m_linearNodeIsLeaf.Begin();
-//         }
-//     case eCT_NODE_PRIM_COUNT :
-//         {
-//             *byteCount = m_linearNodePrimCount.Bytes();
-//             return m_linearNodePrimCount.Begin();
-//         }
-//     case eCT_NODE_PRIM_START_INDEX :
-//         {
-//             *byteCount = m_linearNodePrimStartIndex.Bytes();
-//             return m_linearNodePrimStartIndex.Begin();
-//         }
-//     case eCT_NODE_TO_LEAF_INDEX :
-//         {
-//             *byteCount = m_linearNodeToLeafIndex.Bytes();
-//             return m_linearNodeToLeafIndex.Begin();
-//         }
+    case eCT_LEAF_NODE_PRIM_IDS :
+        {
+            *byteCount = m_leafNodesContent.Bytes();
+            return m_leafNodesContent.Begin()();
+        } break;
+    case eCT_LEAF_NODE_PRIM_START_INDEX :
+        {
+            *byteCount = m_leafNodesContentStart.Bytes();
+            return m_leafNodesContentStart.Begin()();
+        } break;
+    case eCT_LEAF_NODE_PRIM_COUNT :
+        {
+            *byteCount = m_leafNodesContentCount.Bytes();
+            return m_leafNodesContentCount.Begin()();
+        } break;
+    case eCT_NODE_PRIM_IDS :
+        {
+            *byteCount = 0;
+            return NULL;
+        } break;
+    case eCT_PRIMITVES :
+        {
+            return GetRawPrimitives(byteCount);
+        }
+    case eCT_NODE_SPLITS :
+        {
+            *byteCount = m_nodes_Split.Bytes();
+            return m_nodes_Split.Begin()();
+        }
+    case eCT_NODE_SPLIT_AXIS :
+        {
+            *byteCount = m_nodes_SplitAxis.Bytes();
+            return m_nodes_SplitAxis.Begin()();
+        }
+    case eCT_NODE_RIGHT_CHILD :
+        {
+            *byteCount = m_nodes_RightChild.Bytes();
+            return m_nodes_RightChild.Begin()();
+        }
+    case eCT_NODE_LEFT_CHILD :
+        {
+            *byteCount = m_nodes_LeftChild.Bytes();
+            return m_nodes_LeftChild.Begin()();
+        }
+    case eCT_NODE_IS_LEAF :
+        {
+            *byteCount = m_nodes_IsLeaf.Bytes();
+            return m_nodes_IsLeaf.Begin()();
+        }
+    case eCT_NODE_PRIM_COUNT :
+        {
+            *byteCount = 0;
+            return NULL;
+        }
+    case eCT_NODE_PRIM_START_INDEX :
+        {
+            *byteCount = 0;
+            return NULL;
+        }
+    case eCT_NODE_TO_LEAF_INDEX :
+        {
+            *byteCount = m_nodes_NodeIdToLeafIndex.Bytes();
+            return m_nodes_NodeIdToLeafIndex.Begin()();
+        }
     default : *byteCount = 0; return NULL;
     }
 }

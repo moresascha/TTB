@@ -4,6 +4,8 @@
 #include <Nutty.h>
 #include "geometry.h"
 #include <DeviceBuffer.h>
+#include <Copy.h>
+#include <Scan.h>
 #include <cuda/cuda_helper.h>
 #include "memory.h"
 #include "shared_types.h"
@@ -89,6 +91,7 @@ struct NodeContent
     CTuint* primIndex;
     CTuint* nodeIndex;
     CTuint* prefixSum;
+    CTbyte* primIsLeaf;
 };
 
 struct IndexedEvent
@@ -128,15 +131,14 @@ struct Split
 
 struct Node
 {
-    BBox* aabb;
     CTbyte* isLeaf;
     CTreal* split;
     CTbyte* splitAxis;
     CTuint* contentCount;
     CTuint* contentStart;
-    CTuint* content;
-    CTuint* above;
-    CTuint* below;
+    CTuint* leftChild;
+    CTuint* rightChild;
+    CTuint* nodeToLeafIndex;
 };
 
 struct EventSort
@@ -151,22 +153,9 @@ struct ReduceIndexedSplit
 {
     __device__ __host__ IndexedSAHSplit operator()(IndexedSAHSplit t0, IndexedSAHSplit t1)
     {
-        return t0.sah <= t1.sah ? t0 : t1;
+        return t0.sah < t1.sah ? t0 : t1;
     }
 };
-
-// struct ReadOnlyNode
-// {
-//     const BBox* __restrict aabb;
-//     const byte* __restrict isLeaf;
-//     const float* __restrict split;
-//     const byte* __restrict splitAxis;
-//     const uint* __restrict contentCount;
-//     const uint* __restrict contentStart;
-//     const uint* __restrict content;
-//     const uint* __restrict above;
-//     const uint* __restrict below;
-// };
 
 class cuKDTree : public ICTTree
 {
@@ -191,17 +180,27 @@ protected:
 
     nutty::DeviceBuffer<BBox> m_primAABBs;
     nutty::DeviceBuffer<BBox> m_tPrimAABBs;
+    nutty::DeviceBuffer<BBox> m_linearPrimAABBs; //for debugging
 
     Node m_nodes;
-    nutty::DeviceBuffer<BBox> m_nodesBBox;
-    nutty::DeviceBuffer<CTbyte> m_nodesIsLeaf;
-    nutty::DeviceBuffer<CTbyte> m_nodesSplitAxis;
-    nutty::DeviceBuffer<CTreal> m_nodesSplit;
-    nutty::DeviceBuffer<CTuint> m_nodesContentCount;
-    nutty::DeviceBuffer<CTuint> m_nodesStartAdd;
+    nutty::DeviceBuffer<CTbyte> m_nodes_IsLeaf;
+    nutty::DeviceBuffer<CTbyte> m_nodes_SplitAxis;
+    nutty::DeviceBuffer<CTreal> m_nodes_Split;
+    nutty::DeviceBuffer<CTuint> m_nodes_ContentCount;
+    nutty::DeviceBuffer<CTuint> m_nodes_ContentStartAdd;
+
+    nutty::DeviceBuffer<CTuint> m_nodes_LeftChild;
+    nutty::DeviceBuffer<CTuint> m_nodes_RightChild;
+    nutty::DeviceBuffer<CTuint> m_nodes_NodeIdToLeafIndex;
+
+    nutty::DeviceBuffer<CTuint> m_leafNodesContent;
+    nutty::DeviceBuffer<CTuint> m_leafNodesContentCount;
+    nutty::DeviceBuffer<CTuint> m_leafNodesContentStart;
 
     std::vector<CTulong> m_linearGeoHandles;
     std::map<CTGeometryHandle, GeometryRange> m_handleRangeMap;
+
+    void _DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const;
 
 public:
     cuKDTree(void);
@@ -284,47 +283,111 @@ public:
     add_uuid_header(cuKDTree);
 };
 
+class Scanner
+{
+private:
+    nutty::DeviceBuffer<CTuint> m_scannedData;
+    nutty::DeviceBuffer<CTuint> m_sums;
+
+public:
+    void Resize(CTuint size)
+    {
+        m_scannedData.Resize(size);
+        m_sums.Resize(size);
+    }
+
+    template<
+        typename Iterator,
+        typename Operator
+    >
+    void IncScan(Iterator& begin, Iterator& end, Operator op)
+    {
+        nutty::InclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
+    }
+
+    template<
+        typename Iterator,
+        typename Operator
+    >
+    void ExcScan(Iterator& begin, Iterator& end, Operator op)
+    {
+        nutty::ExclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
+    }
+
+    const nutty::DeviceBuffer<CTuint>& GetPrefixSum(void)
+    {
+        return m_scannedData;
+    }
+};
+
 class cuKDTreeBitonicSearch : public cuKDTree
 {
 private:
     void ClearBuffer(void);
     void GrowMemory(void);
+    void GrowNodeMemory(void);
+    void GrowPerLevelNodeMemory(void);
     void InitBuffer(void);
+
+    void ComputeSAH_Splits(
+        CTuint nodeCount, 
+        CTuint nodeOffset,
+        CTuint primitiveCount, 
+        const CTuint* hNodesContentCount, 
+        const CTuint* nodesContentCount, 
+        const CTbyte* isLeaf,
+        NodeContent nodesContent);
+
+    CTuint GetLeavesOnLevel(CTuint nodeOffset, CTuint nodeCount);
 
     nutty::DeviceBuffer<CTuint> m_edgeMask;
     nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
     nutty::DeviceBuffer<CTuint> m_edgeMaskSums;
 
-    nutty::DeviceBuffer<CTreal3> m_bboxMin;
-    nutty::DeviceBuffer<CTreal3> m_bboxMax;
-    nutty::DeviceBuffer<BBox> m_sceneBBox;
-
     nutty::HostBuffer<CTuint> m_hNodesContentCount;
-
-    nutty::DeviceBuffer<CTuint> m_nodesAbove;
-    nutty::DeviceBuffer<CTuint> m_nodesBelow;
+    nutty::HostBuffer<CTbyte> m_hIsLeaf;
 
     Split m_splits;
-    nutty::DeviceBuffer<IndexedSAHSplit> m_splitsIndexedSplit;
-    nutty::DeviceBuffer<CTreal> m_splitsSplit;
-    nutty::DeviceBuffer<CTbyte> m_splitsAxis;
-    nutty::DeviceBuffer<CTuint> m_splitsAbove;
-    nutty::DeviceBuffer<CTuint> m_splitsBelow;
+    nutty::DeviceBuffer<IndexedSAHSplit> m_splits_IndexedSplit;
+    nutty::DeviceBuffer<CTreal> m_splits_Plane;
+    nutty::DeviceBuffer<CTbyte> m_splits_Axis;
+    nutty::DeviceBuffer<CTuint> m_splits_Above;
+    nutty::DeviceBuffer<CTuint> m_splits_Below;
 
-    Event m_edges[2];
-    nutty::DeviceBuffer<IndexedEvent> m_edgesIndexedEdge;
-    DoubleBuffer<CTbyte> m_edgesType;
-    DoubleBuffer<CTuint> m_edgesNodeIndex;
-    DoubleBuffer<CTuint> m_edgesPrimId;
-    DoubleBuffer<CTuint> m_edgesPrefixSum;
-    nutty::DeviceBuffer<CTuint> m_scannedEdgeTypeStartMask;
-    nutty::DeviceBuffer<CTuint> m_scannedEdgeTypeEndMask;
-    nutty::DeviceBuffer<CTuint> m_edgeTypeMaskSums;
+    Event m_events[2];
+    nutty::DeviceBuffer<IndexedEvent> m_events_IndexedEdge;
+    DoubleBuffer<CTbyte> m_events_Type;
+    DoubleBuffer<CTuint> m_events_NodeIndex;
+    DoubleBuffer<CTuint> m_events_PrimId;
+    DoubleBuffer<CTuint> m_events_PrefixSum;
+
+    nutty::DeviceBuffer<CTuint> m_scannedEventTypeStartMask;
+    nutty::DeviceBuffer<CTuint> m_scannedEventTypeEndMask;
+    nutty::DeviceBuffer<CTuint> m_eventTypeMaskSums;
 
     NodeContent m_nodesContent;
     nutty::DeviceBuffer<CTuint> m_primIndex;
     nutty::DeviceBuffer<CTuint> m_primNodeIndex;
     nutty::DeviceBuffer<CTuint> m_primPrefixSum;
+    nutty::DeviceBuffer<CTbyte> m_primIsLeaf;
+
+    Scanner m_primIsLeafScanner;
+    Scanner m_primIsNoLeafScanner;
+    Scanner m_leafCountScanner;
+    Scanner m_interiorCountScanner;
+    Scanner m_interiorContentScanner;
+    Scanner m_leafContentScanner;
+
+    nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_maskedleafContent;
+
+    DoubleBuffer<BBox> m_nodesBBox;
+
+    nutty::DeviceBuffer<CTuint> m_newInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_newPrimNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_newPrimPrefixSum;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentCount;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
 
 public:
     cuKDTreeBitonicSearch(void)

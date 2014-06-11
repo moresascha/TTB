@@ -762,7 +762,7 @@ void traceRays(float4* colors,
                     q[dst].push(refRange);
                 }
 
-               // print("%d\n", cudaDeviceSynchronize());
+                //print("%d\n", cudaDeviceSynchronize());
 
                 uint shadowRaysCount = compactRays(g_shadowRayMask->Begin(), g_shadowRays[1]->Begin(), g_shadowRays[0]->Begin(), lastRayCount);
 

@@ -135,7 +135,7 @@ void cpuKDTree::_CreateTree(void)
         cpuTreeNode* parent = &m_linearNodeMemory[nodeId];
         queue.pop();
 
-        if(parent->depth == m_depth || parent->GetPrimitiveCount() < MAX_ELEMENTS_PER_LEAF)
+        if(parent->depth == m_depth || parent->GetPrimitiveCount() <= MAX_ELEMENTS_PER_LEAF)
         {
             parent->SetLeaf(true);
             parent->SetLeafIndex(m_leafNodesCount);
@@ -180,6 +180,7 @@ void cpuKDTree::_CreateTree(void)
         float currentSplit = 0;
         int primsBelow = 0;
         int primsAbove = (int)parent->GetPrimitiveCount();
+        int sabove = 0; int sbelow = 0;
 
         for(int i = 0; i < m_events.size(); ++i)
         {
@@ -191,12 +192,14 @@ void cpuKDTree::_CreateTree(void)
             }
 
             float sah = getSAH(parentAABB, axis, event.split, primsBelow, primsAbove);
-            ct_printf("[%d %d] Split=%.4f SAH=%.4f\n", primsBelow, primsAbove, event.split, sah == FLT_MAX ? -1.0f : sah);
+            //ct_printf("[%d %d] Split=%.4f SAH=%.4f\n", primsBelow, primsAbove, event.split, sah == FLT_MAX ? -1.0f : sah);
 
             if(sah < currentBestSAH)
             {
                 currentBestSAH = sah;
                 currentSplit = event.split;
+                sabove = primsAbove;
+                sbelow = primsBelow;
             }
 
             if(event.type == eEdgeStart)
@@ -221,7 +224,7 @@ void cpuKDTree::_CreateTree(void)
             continue;
         }
 
-        ct_printf("Found best: sah=%f, axis=%d, split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, currentSplit);
+        //ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
         parent->SetLeafIndex(m_leafNodesCount);
         parent->SetSplit(currentSplit);
         parent->SetSplitAxis(axis);
@@ -319,14 +322,19 @@ void cpuKDTree::_CreateTree(void)
         queue.push(parent->RightIndex());
     }
 
-    PrintBuffer(m_linearNodeAABBs);
+    //PrintBuffer(m_linearNodeAABBs);
     PrintBuffer(m_linearNodeIsLeaf);
     PrintBuffer(m_linearNodeSplits);
-    PrintBuffer(m_linearNodePrimCount);
-    PrintBuffer(m_linearNodePrimStartIndex);
+    //PrintBuffer(m_linearNodePrimCount);
+    //PrintBuffer(m_linearNodePrimStartIndex);
     PrintBuffer(m_linearPerLeafNodePrimCount);
     PrintBuffer(m_linearPerLeafNodePrimStartIndex);
+    if(m_linearPerLeafNodePrimitives.Size() < 1024)
     PrintBuffer(m_linearPerLeafNodePrimitives);
+    PrintBuffer(m_linearNodeToLeafIndex);
+    PrintBuffer(m_linearNodeLeft);
+    PrintBuffer(m_linearNodeRight);
+    PrintBuffer(m_linearNodeSplitAxis);
 }
 
 CT_RESULT cpuKDTree::Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData)
@@ -694,11 +702,14 @@ void cpuKDTree::TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix
              aabb.AddVertex(a);
              aabb.AddVertex(b);
              aabb.AddVertex(c);
-
-             m_sceneAABB.AddVertex(a);
-             m_sceneAABB.AddVertex(b);
-             m_sceneAABB.AddVertex(c);
          }
+    }
+
+    //move to cuda
+    m_sceneAABB.Reset();
+    for(CTuint i = 0; i < m_linearPrimitiveMemory.size(); ++i)
+    {
+        m_sceneAABB.AddVertex(m_linearPrimitiveMemory[i]);
     }
 }
 

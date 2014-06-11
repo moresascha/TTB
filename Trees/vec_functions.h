@@ -1,13 +1,23 @@
 #pragma once
 #include "ct.h"
 
-__forceinline __device__ __host__ int getLongestAxis(const CTreal3& mini,const CTreal3& maxi) 
+__forceinline __device__ __host__ int getLongestAxis(const CTreal3& mini, const CTreal3& maxi) 
 {
     CTreal dx = maxi.x - mini.x;
     CTreal dy = maxi.y - mini.y;
     CTreal dz = maxi.z - mini.z;
-    CTreal m = fmaxf(dx, fmaxf(dy, dz));
-    return m == dx ? 0 : m == dy ? 1 : 2;
+
+    if(dy < dz && dx < dz)
+    {
+        return 2;
+    }
+
+    if(dy < dx && dz < dx)
+    {
+        return 0;
+    }
+
+    return 1;
 }
 
 __device__ __host__ __forceinline  int fls(int f)
