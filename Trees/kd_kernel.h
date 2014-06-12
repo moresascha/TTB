@@ -170,9 +170,12 @@ __global__ void compactLeafNInteriorContent(CTuint* leafContent,
                                             const CTbyte* __restrict isLeafMask, 
                                             const CTuint* __restrict prefixSumLeaf, 
                                             const CTuint* __restrict prefixSumInterior,
+                                            const CTuint* __restrict noLeafPrefixSum,
+
                                             const CTuint* __restrict primIds,
                                             const CTuint* __restrict oldPrimNodeIndex,
                                             const CTuint* __restrict oldPrimPrefixSum,
+
                                             CTuint* newPrimNodeIndex,
                                             CTuint* newPrimPrefixSum,
                                             CTuint N)
@@ -187,8 +190,8 @@ __global__ void compactLeafNInteriorContent(CTuint* leafContent,
     else
     {
         CTuint nodeIndex = oldPrimNodeIndex[id];
-        nodeIndex -= leafCountScan[nodeIndex];
-
+        //nodeIndex -= leafCountScan[nodeIndex/2 + nodeIndex%2];
+        nodeIndex = noLeafPrefixSum[nodeIndex/2 + nodeIndex%2];
         CTuint dst = prefixSumInterior[id];
         interiorContent[dst] = primIds[id];
         newPrimNodeIndex[dst] = nodeIndex;
@@ -228,8 +231,11 @@ __global__ void fixContentStartAddr(
         return;
     }
 
-    CTuint startAdd = nodes.contentStart[id];
-    nodes.contentStart[id] -= isLeafScanned[startAdd];
+    CTuint startAdd = nodes.contentStart[2 * id + 0];
+    nodes.contentStart[2 * id + 0] = startAdd - isLeafScanned[startAdd];
+
+    startAdd = nodes.contentStart[2 * id + 1];
+    nodes.contentStart[2 * id + 1] = startAdd - isLeafScanned[startAdd];
 }
 
 __global__ void createContentMasks(
@@ -268,25 +274,32 @@ __global__ void compactLeafNInteriorData(
 {
     RETURN_IF_OOB(N);
 
-    if(LAST_LEVEL)
+    if(LAST_LEVEL && id < N/2)
     {
         leafContentStart[lastLeafCount + id] = contentStartOffset + scannedLeafContentstart[id];
         leafContentCount[lastLeafCount + id] = nodesContentCount[id];
         return;
     }
 
-    if(isLeaf[id])
+    if(id < N/2)
     {
-        CTuint dst = leafCountScan[id];
-        leafContentStart[lastLeafCount + dst] = contentStartOffset + scannedLeafContentstart[id];
-        leafContentCount[lastLeafCount + dst] = nodesContentCount[id];
+        if(isLeaf[id])
+        {
+            CTuint dst = leafCountScan[id];
+            leafContentStart[lastLeafCount + dst] = contentStartOffset + scannedLeafContentstart[id];
+            leafContentCount[lastLeafCount + dst] = nodesContentCount[id];
+        }
     }
     else
     {
-        CTuint dst = interiorCountScan[id];
-        newContentCount[dst] = nodesContentCount[id];
-        newContentStart[dst] = scannedInteriorContentstart[id];
-        newBBxes[dst] = nodeBBoxes[id];
+        if(isLeaf[id/2])
+        {
+            CTuint dst = interiorCountScan[id/2];
+            dst += id%2;
+            newContentCount[dst] = nodesContentCount[id];
+            newContentStart[dst] = scannedInteriorContentstart[id];
+            newBBxes[dst] = nodeBBoxes[id];
+        }
     }
 }
 
@@ -355,24 +368,33 @@ void __device__ splitAABB(BBox* aabb, CTreal split, CTbyte axis, BBox* l, BBox* 
     }
 }
 
-template <CTbyte FORCE_LEAF>
 __global__ void initNodes(
     Node nodes,
     Split splits,
+    CTuint* leafNodesContentCount,
+    CTuint* leafNodesContentStart,
     const CTuint* __restrict scannedEdges,
+    const CTuint* __restrict leafScanned,
+    const CTuint* __restrict interiorScanned,
+    const CTuint* __restrict isPrimLeafScanned,
     BBox* oldBBoxes,
     BBox* newBBoxes,
     CTuint interiorNodeOffset,
     CTuint currentLeafNodes,
     CTuint nodeOffset,
+    CTuint gotLeaves,
     CTuint N)
 {
     RETURN_IF_OOB(N);
 
     CTuint nodeId = id + nodeOffset;
+    CTbyte isMeLeaf = nodes.isLeaf[nodeId];
 
-    if(nodes.isLeaf[nodeId])
+    if(isMeLeaf)
     {
+        CTuint dst = leafScanned[id];
+        leafNodesContentCount[currentLeafNodes + dst] = nodes.contentCount[id];
+        leafNodesContentStart[currentLeafNodes + dst] = nodes.contentStart[id];
         return;
     }
 
@@ -380,40 +402,44 @@ __global__ void initNodes(
     IndexedSAHSplit split = splits.indexedSplit[edgesBeforeMe];
 
     CTreal s = splits.v[split.index];
+    CTbyte axis = splits.axis[split.index];
+    nodes.split[nodeId] = s;
+    nodes.splitAxis[nodeId] = axis;
 
-    CTbyte isMeLeaf = FORCE_LEAF || s == FLT_MAX;
-    nodes.isLeaf[nodeId] = isMeLeaf;
-    
-    if(!isMeLeaf)
+    CTuint above = splits.above[split.index];
+    CTuint below = splits.below[split.index];
+
+    CTuint dst = gotLeaves ? interiorScanned[id] : 0;
+
+    nodes.contentCount[2 * dst + 0] = below;
+    nodes.contentCount[2 * dst + 1] = above;
+
+    CTuint ltmp = scannedEdges[edgesBeforeMe];
+    CTuint belowPrims = ltmp;
+    CTuint abovePrims = ltmp + below;
+
+    if(gotLeaves)
     {
-        CTbyte axis = splits.axis[split.index];
-        nodes.split[nodeId] = s;
-        nodes.splitAxis[nodeId] = axis;
-
-        CTuint above = splits.above[split.index];
-        CTuint below = splits.below[split.index];
-
-        nodes.contentCount[2 * id] = below;
-        nodes.contentCount[2 * id + 1] = above;
-
-        CTuint ltmp = scannedEdges[edgesBeforeMe];
-        nodes.contentStart[2 * id] = ltmp;
-        nodes.contentStart[2 * id + 1] = ltmp + below;
-
-        CTuint childOffset = interiorNodeOffset + currentLeafNodes;
-        CTuint leftChildIndex = childOffset + 2 * id + 0;
-        CTuint rightChildIndex = childOffset + 2 * id + 1;
-
-        nodes.leftChild[nodeId] = leftChildIndex;
-        nodes.rightChild[nodeId] = rightChildIndex;
-
-        BBox l;
-        BBox r;
-
-        splitAABB(&oldBBoxes[id], s, axis, &l, &r);
-        newBBoxes[2 * id + 0] = l;
-        newBBoxes[2 * id + 1] = r;
+        belowPrims = belowPrims - isPrimLeafScanned[belowPrims];
+        abovePrims = abovePrims - isPrimLeafScanned[abovePrims];
     }
+
+    nodes.contentStart[2 * dst + 0] = belowPrims;
+    nodes.contentStart[2 * dst + 1] = abovePrims;
+
+    CTuint childOffset = interiorNodeOffset + currentLeafNodes;
+    CTuint leftChildIndex = childOffset + 2 * id + 0;
+    CTuint rightChildIndex = childOffset + 2 * id + 1;
+
+    nodes.leftChild[nodeId] = leftChildIndex;
+    nodes.rightChild[nodeId] = rightChildIndex;
+
+    BBox l;
+    BBox r;
+
+    splitAABB(&oldBBoxes[id], s, axis, &l, &r);
+    newBBoxes[2 * dst + 0] = l;
+    newBBoxes[2 * dst + 1] = r;
 }
 
 #if defined DYNAMIC_PARALLELISM
