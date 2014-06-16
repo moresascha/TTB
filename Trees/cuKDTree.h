@@ -15,6 +15,7 @@
 
 #define EDGE_START ((byte)0)
 #define EDGE_END   ((byte)1)
+//#define EDGE_LEAF  ((byte)2)
 
 #define INVALID_ADDRESS ((uint)-1)
 #define FLT_MAX 3.402823466e+38F
@@ -320,6 +321,13 @@ public:
     }
 };
 
+struct MakeLeavesResult
+{
+    CTuint leafPrimitiveCount;
+    CTuint leafCount;
+    CTuint interiorPrimitiveCount;
+};
+
 class cuKDTreeBitonicSearch : public cuKDTree
 {
 private:
@@ -329,23 +337,31 @@ private:
     void GrowPerLevelNodeMemory(void);
     void InitBuffer(void);
 
+    void PrintStatus(void);
+
     void ComputeSAH_Splits(
         CTuint nodeCount, 
-        CTuint nodeOffset,
         CTuint primitiveCount, 
         const CTuint* hNodesContentCount, 
         const CTuint* nodesContentCount, 
         const CTbyte* isLeaf,
         NodeContent nodesContent);
 
-    CTuint GetLeavesOnLevel(CTuint nodeOffset, CTuint nodeCount);
+    CTuint CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint range);
+
+    MakeLeavesResult MakeLeaves(
+        nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
+        CTuint nodeOffset, 
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        CTuint currentLeafCount, 
+        CTuint leafContentOffset);
 
     nutty::DeviceBuffer<CTuint> m_edgeMask;
     nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
     nutty::DeviceBuffer<CTuint> m_edgeMaskSums;
 
     nutty::HostBuffer<CTuint> m_hNodesContentCount;
-    nutty::HostBuffer<CTbyte> m_hIsLeaf;
 
     Split m_splits;
     nutty::DeviceBuffer<IndexedSAHSplit> m_splits_IndexedSplit;
@@ -380,6 +396,9 @@ private:
 
     nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
     nutty::DeviceBuffer<CTuint> m_maskedleafContent;
+
+    nutty::DeviceBuffer<CTuint> m_activeNodes;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeaf;
 
     DoubleBuffer<BBox> m_nodesBBox;
 
