@@ -119,6 +119,11 @@ cpuTreeNode::~cpuTreeNode(void)
 {
 }
 
+#ifndef _DEBUG
+#undef ct_printf
+#define ct_printf(...)
+#endif
+
 float g_split;
 byte g_axis;
 
@@ -128,7 +133,7 @@ void cpuKDTree::_CreateTree(void)
     queue.push(m_root);
 
     m_events.reserve(m_linearPrimitiveMemory.size() * 2);
-
+    CTuint depth = 0;
     while(!queue.empty())
     {
         CTuint nodeId = queue.front();
@@ -154,7 +159,9 @@ void cpuKDTree::_CreateTree(void)
         AABB& parentAABB = m_linearNodeAABBs[parent->aabb];
 
         CT_SPLIT_AXIS axis = getLongestAxis(parentAABB.GetMax() - parentAABB.GetMin());
-        ct_printf("%d\n", axis);
+        ct_printf("%d [%f %f %f|%f %f %f]\n", axis, 
+            parentAABB.GetMin().x, parentAABB.GetMin().y, parentAABB.GetMin().z, 
+            parentAABB.GetMax().x, parentAABB.GetMax().y, parentAABB.GetMax().z);
         m_events.clear();
         for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
         {
@@ -176,7 +183,7 @@ void cpuKDTree::_CreateTree(void)
 
         std::sort(m_events.begin(), m_events.end());
                         
-        float currentBestSAH = FLT_MAX;
+        float currentBestSAH = INVALID_SAH;
         float currentSplit = 0;
         int primsBelow = 0;
         int primsAbove = (int)parent->GetPrimitiveCount();
@@ -192,7 +199,7 @@ void cpuKDTree::_CreateTree(void)
             }
 
             float sah = getSAH(parentAABB, axis, event.split, primsBelow, primsAbove);
-            //ct_printf("[%d %d] Split=%.4f SAH=%.4f\n", primsBelow, primsAbove, event.split, sah == FLT_MAX ? -1.0f : sah);
+           // ct_printf("[%d %d] Split=%.4f SAH=%.4f\n", primsBelow, primsAbove, event.split, sah == INVALID_SAH ? -1.0f : sah);
 
             if(sah < currentBestSAH)
             {
@@ -207,7 +214,8 @@ void cpuKDTree::_CreateTree(void)
                 primsBelow++;
             }
         }
-        ct_printf("\n");
+        //ct_printf("\n");
+        //ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
         if(currentBestSAH == FLT_MAX)
         {
             parent->SetLeaf(true);
@@ -224,7 +232,6 @@ void cpuKDTree::_CreateTree(void)
             continue;
         }
 
-        //ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
         parent->SetLeafIndex(m_leafNodesCount);
         parent->SetSplit(currentSplit);
         parent->SetSplitAxis(axis);
@@ -317,15 +324,17 @@ void cpuKDTree::_CreateTree(void)
 
         leftNode.depth = parent->depth + 1;
         rightNode.depth = parent->depth + 1;
+        depth++;
 
         queue.push(parent->LeftIndex());
         queue.push(parent->RightIndex());
     }
-
+    ct_printf("Depth=%d , (Max=%d)\n", depth, m_depth);
+#ifdef _DEBUG
     //PrintBuffer(m_linearNodeAABBs);
     PrintBuffer(m_linearNodeIsLeaf);
     PrintBuffer(m_linearNodeSplits);
-    //PrintBuffer(m_linearNodePrimCount);
+    PrintBuffer(m_linearNodePrimCount);
     //PrintBuffer(m_linearNodePrimStartIndex);
     PrintBuffer(m_linearPerLeafNodePrimCount);
     PrintBuffer(m_linearPerLeafNodePrimStartIndex);
@@ -335,6 +344,7 @@ void cpuKDTree::_CreateTree(void)
     PrintBuffer(m_linearNodeLeft);
     PrintBuffer(m_linearNodeRight);
     PrintBuffer(m_linearNodeSplitAxis);
+#endif
 }
 
 CT_RESULT cpuKDTree::Traverse(CT_TREE_TRAVERSAL order, OnNodeTraverse cb, void* userData)

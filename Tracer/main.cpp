@@ -459,39 +459,53 @@ struct GeoHandle
     }
 };
 
+std::map<std::string, RawTriangles*> g_modelCache;
+
 CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* atlas, const char* objFile, GeoHandle* geoHandle = NULL)
 {
-    RawTriangles cpuTris;
-    std::string modelPath;
-    FindFilePath(objFile, modelPath);
-    chimera::util::HTimer loadTimer;
+    RawTriangles* cpuTris;
 
-    loadTimer.Start();
-    if(!ReadObjFileThreaded(modelPath.c_str(), cpuTris))
+    chimera::util::HTimer loadTimer;
+    auto it = g_modelCache.find(std::string(objFile));
+    if(it != g_modelCache.end())
     {
-        print("Couldn't load model!\n");
-        return -1;
+        cpuTris = it->second;
     }
+    else
+    {
+        RawTriangles* _cpuTris = new RawTriangles();
+        std::string modelPath;
+        FindFilePath(objFile, modelPath);
+        loadTimer.Start();
+        if(!ReadObjFileThreaded(modelPath.c_str(), *_cpuTris))
+        {
+            print("Couldn't load model!\n");
+            return -1;
+        }
+        g_modelCache.insert(std::pair<std::string, RawTriangles*>(std::string(objFile), _cpuTris));
+        cpuTris = _cpuTris;
+    }
+
     loadTimer.Stop();
-    print("Loading '%s' took '%f' Seconds\n", objFile, loadTimer.GetSeconds());
+    print("Loading '%s' took '%f' Seconds (Used Cache '%d')\n", objFile, loadTimer.GetSeconds(), (CTuint)(it != g_modelCache.end()));
 
     size_t tcstart = data.triTc.Size();
-    data.triTc.Resize(tcstart + cpuTris.tcoords.size());
+    data.triTc.Resize(tcstart + cpuTris->tcoords.size());
 
     size_t nstart = data.triNormals.Size();
-    data.triNormals.Resize(nstart + cpuTris.normals.size());
+    data.triNormals.Resize(nstart + cpuTris->normals.size());
 
     size_t matIdstart = data.perVertexMatId.Size();
     
-    if(!cpuTris.tcoords.empty())
+    if(!cpuTris->tcoords.empty())
     {
-        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(data.triTc.Begin()() + tcstart, &cpuTris.tcoords[0], cpuTris.tcoords.size() * sizeof(TexCoord), cudaMemcpyHostToDevice));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(data.triTc.Begin()() + tcstart, &(cpuTris->tcoords[0]), cpuTris->tcoords.size() * sizeof(TexCoord), cudaMemcpyHostToDevice));
     }
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(data.triNormals.Begin()() + nstart, &cpuTris.normals[0], cpuTris.normals.size() * sizeof(Normal), cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(data.triNormals.Begin()() + nstart, &(cpuTris->normals[0]), cpuTris->normals.size() * sizeof(Normal), cudaMemcpyHostToDevice));
 
     std::map<std::string, int> texToSlot;
-    for(auto& it = cpuTris.materials.begin(); it !=  cpuTris.materials.end(); ++it)
+    for(auto& it = cpuTris->materials.begin(); it !=  cpuTris->materials.end(); ++it)
     {
         if(it->second.texFile.size() && texToSlot.find(it->second.texFile) == texToSlot.end())
         {
@@ -504,7 +518,7 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
 
     uint matOffset = data.materials.GetPos();
 
-    for(auto& i = cpuTris.materials.begin(); i != cpuTris.materials.end(); ++i)
+    for(auto& i = cpuTris->materials.begin(); i != cpuTris->materials.end(); ++i)
     {
         RawMaterial cpuMat = i->second;
         Material mat;
@@ -537,10 +551,10 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
 
     std::vector<byte> matsIds;
 
-    for(auto& i = cpuTris.intervals.begin(); i != cpuTris.intervals.end(); ++i)
+    for(auto& i = cpuTris->intervals.begin(); i != cpuTris->intervals.end(); ++i)
     {
         matsIds.reserve(matsIds.size() + i->end - i->start);
-        byte matIndex = matOffset + cpuTris.GetMaterialIndex(i->material);
+        byte matIndex = matOffset + cpuTris->GetMaterialIndex(i->material);
         ICTGeometry* geo;
         CTCreateGeometry(&geo);
         for(uint a = i->start; a < i->end; ++a)
@@ -550,7 +564,7 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
             {
                 matsIds.push_back(matIndex);
                 CTreal3 pos;
-                Position p = cpuTris.positions[3 * a + k];
+                Position p = cpuTris->positions[3 * a + k];
                 pos.x = p.x;
                 pos.y = p.y;
                 pos.z = p.z;
@@ -559,7 +573,7 @@ CTGeometryHandle AddGeometry(GPUTraceData& data, ICTTree* tree, cuTextureAtlas* 
             CTAddPrimitive(geo, &tri);
         }
         //CTAddGeometry(tree, geo, &handle);
-        CTreal3* ptr = &cpuTris.positions[0];
+        CTreal3* ptr = &cpuTris->positions[0];
         CT_SAFE_CALL(CTAddGeometryFromLinearMemory(tree, ptr + 3*i->start, 3*(i->end - i->start), &handle));
         if(geoHandle)
         {
@@ -590,7 +604,7 @@ void createTestTree(CTuint type)
 
     chimera::util::Mat4 model;
     CTuint addSum = 12*3;
-    uint c = 1;
+    uint c = 16;
     for(int i = 0; i < c; ++i)
     {
         int s = (int)sqrt(c);
@@ -600,8 +614,8 @@ void createTestTree(CTuint type)
         hhandle.end += addSum;
         cubeHandles.push_back(hhandle);
         addSum += (hhandle.end - hhandle.start);
-        model.SetTranslation(0,4,0);
-        //model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+        //model.SetTranslation(0,4,0);
+        model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
     }
 
@@ -684,24 +698,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     CT_SAFE_CALL(CTInit(0));
 
-    //createTestTree(CT_CREATE_TREE_CPU);
-    print("\n\n\n");
-    createTestTree(CT_CREATE_TREE_GPU);
+//   createTestTree(CT_CREATE_TREE_CPU);
+//   print("\n\n\n");
+//   createTestTree(CT_CREATE_TREE_GPU);
 
-    return 0;
+    //return 0;
     uint treeType = CT_CREATE_TREE_GPU;
     ICTTree* tree;
     CT_SAFE_CALL(CTCreateSAHKDTree(&tree, treeType));
 
     GPUTraceData* triGPUData = new GPUTraceData();
     GeoHandle hhandle;
-    AddGeometry(*triGPUData, tree, atlas, "empty_room.obj", &hhandle);
+    chimera::util::Mat4 model;
+    AddGeometry(*triGPUData, tree, atlas, "empty_room_big.obj", &hhandle);
+    //model.SetScale(10,10,10);
+    //CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
 
     std::vector<GeoHandle> cubeHandles;
 
-    chimera::util::Mat4 model;
     CTuint addSum = 12*3;
-    uint c = 1;
+    uint c = 32;
+    float scale = sqrt(c);
+    srand(0);
     for(int i = 0; i < c; ++i)
     {
         int s = (int)sqrt(c);
@@ -711,12 +729,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         hhandle.end += addSum;
         cubeHandles.push_back(hhandle);
         addSum += (hhandle.end - hhandle.start);
-        //model.SetTranslation(0,4,0);
-        model.SetTranslation(-6 + 3*(i/s), 4, -6 + 3*(i%s));
+        //model.SetTranslation(rand() % 10,4,rand() % 10);
+        model.SetTranslation(-scale + 0.5*scale*(i/s), 4, -scale + 0.5*scale*(i%s));
         CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
     }
 
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+   // CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
@@ -752,7 +770,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     //geoTransMatrix.SetTranslation(0,1,0); 
     updateTree(tree, nodeGPUData);
-    return 0;
+
     CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer)); //collectdata
 
     const void* memory = NULL; 
@@ -945,6 +963,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             }
             timer.VTick();
         }
+    }
+
+    for(auto& it = g_modelCache.begin(); it != g_modelCache.end(); ++it)
+    {
+        delete it->second;
     }
 
     delete debugLayer;

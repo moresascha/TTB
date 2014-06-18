@@ -98,7 +98,9 @@ __host__ void cuDeviceHeap::Copy(nutty::DeviceBuffer<T>& dst, size_t blockId)
     CopyHeapToGlobal(GetBlock(blockId), (void*)dst.GetDevicePtr()(), l);
 }
 
-template <typename T>
+template <
+    typename T
+>
 __device__ T* cuDeviceHeap::Alloc(CTuint id, size_t size)
 {
     return (T*)Alloc(id, sizeof(T) * size);

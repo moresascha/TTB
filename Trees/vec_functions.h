@@ -1,9 +1,13 @@
 #pragma once
 #include "ct.h"
+#include "shared_types.h"
 
 __forceinline __device__ __host__ int getLongestAxis(const CTreal3& mini, const CTreal3& maxi) 
 {
-    CTreal dx = maxi.x - mini.x;
+    CTreal3 v = maxi - mini;
+    float m = fmaxf(v.x, fmaxf(v.y, v.z));
+    return m == v.x ? 0 : m == v.y ? 1 : 2;
+    /*CTreal dx = maxi.x - mini.x;
     CTreal dy = maxi.y - mini.y;
     CTreal dz = maxi.z - mini.z;
 
@@ -17,7 +21,7 @@ __forceinline __device__ __host__ int getLongestAxis(const CTreal3& mini, const 
         return 0;
     }
 
-    return 1;
+    return 1;*/
 }
 
 __device__ __host__ __forceinline  int fls(int f)
@@ -32,7 +36,7 @@ __device__ __host__ __forceinline int ilog2(int f)
     return fls(f) - 1;
 }
 
-__device__ __host__ __forceinline  enum CT_SPLIT_AXIS getLongestAxis(const CTreal3& v)
+__device__ __host__ __forceinline enum CT_SPLIT_AXIS getLongestAxis(const CTreal3& v)
 {
     float m = fmaxf(v.x, fmaxf(v.y, v.z));
     return m == v.x ? eCT_X : m == v.y ? eCT_Y : eCT_Z;
@@ -93,7 +97,8 @@ template <
 >
 __device__ __host__ CTreal __inline getSAH(const __AABB& node, CTint axis, CTreal split, CTint primBelow, CTint primAbove, CTreal traversalCost = 0.125f, CTreal isectCost = 1)
 {
-    CTreal cost = FLT_MAX;
+    CTreal cost = INVALID_SAH;
+
     if(split > getAxis(node.GetMin(), axis) && split < getAxis(node.GetMax(), axis))
     {
         CTreal3 axisScale = getAxisScale(node);

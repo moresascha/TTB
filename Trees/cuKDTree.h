@@ -332,12 +332,12 @@ class cuKDTreeBitonicSearch : public cuKDTree
 {
 private:
     void ClearBuffer(void);
-    void GrowMemory(void);
+    void GrowPrimitiveEventMemory(void);
     void GrowNodeMemory(void);
-    void GrowPerLevelNodeMemory(void);
+    void GrowPerLevelNodeMemory(CTuint newSize);
     void InitBuffer(void);
 
-    void PrintStatus(void);
+    void PrintStatus(const char* msg = NULL);
 
     void ComputeSAH_Splits(
         CTuint nodeCount, 
@@ -356,6 +356,15 @@ private:
         CTuint primitiveCount, 
         CTuint currentLeafCount, 
         CTuint leafContentOffset);
+
+    MakeLeavesResult MakeLeavesFromBadSplits(
+        nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
+        CTuint nodeOffset, 
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        CTuint currentLeafCount, 
+        CTuint leafContentOffset
+        );
 
     nutty::DeviceBuffer<CTuint> m_edgeMask;
     nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
@@ -396,6 +405,8 @@ private:
 
     nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
     nutty::DeviceBuffer<CTuint> m_maskedleafContent;
+
+    nutty::DeviceBuffer<CTuint> m_lastNodeContentStartAdd;
 
     nutty::DeviceBuffer<CTuint> m_activeNodes;
     nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeaf;

@@ -32,7 +32,6 @@ std::ostream& operator<<(std::ostream &out, const CTbyte& t);
     OutputDebugStringA(":  ");\
     PrintBuffer(_name, _length);
 
-
 template <
     typename Buffer
 >
@@ -41,7 +40,7 @@ void PrintBuffer(const Buffer& buffer, size_t max, const char* trim)
     std::stringstream ss;
     for(CTuint i = 0; i < min(max, buffer.Size()); ++i)
     {
-        ss << buffer[i] /*<< "[" << i << "]" */ << " " << trim;
+        ss << buffer[i] /*<< "[" << i << "]"*/  << " " << trim;
     }
     ss << "\n";
     OutputDebugStringA(ss.str().c_str());
