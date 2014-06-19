@@ -439,7 +439,7 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
         bla);
     bla = 1;
     start = 0;
-#if 1
+#if 0
     for(int i = 0; i < eventCount; ++i)
     {
         ct_printf("%d [%d %d] id=%d Split=%.4f SAH=%.4f\n", i, m_splits_Below[i], m_splits_Above[i], 
@@ -618,7 +618,7 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
     nutty::Copy(m_primIndex.Begin(), m_newInteriorContent.Begin(), m_newInteriorContent.Begin() + interiorPrimCount);
     nutty::Copy(m_primNodeIndex.Begin(), m_newPrimNodeIndex.Begin(), m_newPrimNodeIndex.Begin() + interiorPrimCount);
     nutty::Copy(m_primPrefixSum.Begin(), m_newPrimPrefixSum.Begin(), m_newPrimPrefixSum.Begin() + interiorPrimCount);
-    PRINT_BUFFER(m_primNodeIndex);
+
     MakeLeavesResult result;
     result.leafCount = leafCount;
     result.interiorPrimitiveCount = interiorPrimCount;
@@ -757,7 +757,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
             m_nodes,
             m_nodes_IsLeaf.Begin()() + g_nodeOffset,
             m_activeNodesIsLeaf.Begin()(), 
-            m_splits, 
+            m_splits,
+            d == m_depth-1,
             nodeCount);
 
         CTuint b = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
@@ -774,13 +775,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         MakeLeavesResult leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), 0, nodeCount, primitiveCount, g_currentLeafCount, g_leafContentOffset);
         CTuint lastLeaves = leavesRes.leafCount;
         CTuint lastCnt = primitiveCount;
-        primitiveCount = leavesRes.interiorPrimitiveCount;
-        
-        //if we got leaves here we need to adjust events nodeIds
-        if(leavesRes.leafCount)
-        {
-
-        }
+        primitiveCount = leavesRes.interiorPrimitiveCount;      
 
         if(leavesRes.interiorPrimitiveCount)
         {
@@ -796,6 +791,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
             nutty::ZeroMem(m_primIsLeaf);
 
+            //if we got leaves here we need to adjust events nodeIds
             setPrimBelongsToLeafFromEvents<<<eventGrid, eventBlock>>>(
                 m_events[1], 
                 m_nodesContent,
@@ -806,7 +802,6 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
             CTuint childCount = (nodeCount - leavesRes.leafCount) * 2;
             CTuint thisLevelNodesLeft = nodeCount - leavesRes.leafCount;
-            //PrintStatus("Before initThisLevelInteriorNodes");
 
             nodeBlock = nutty::cuda::GetCudaBlock(thisLevelNodesLeft, 256U);
             nodeGrid = nutty::cuda::GetCudaGrid(thisLevelNodesLeft, nodeBlock);
@@ -832,7 +827,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 g_nodeOffset,
                 leavesRes.leafCount,
                 thisLevelNodesLeft,
-                m_lastNodeContentStartAdd.Begin()());
+                m_lastNodeContentStartAdd.Begin()(),
+                m_depth == d+1);
 
             nutty::Copy(m_nodes_ContentCount.Begin(), m_newNodesContentCount.Begin(), m_newNodesContentCount.Begin() + childCount);
             nutty::Copy(m_nodes_ContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin() + childCount);
@@ -841,11 +837,12 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 m_events[1], 
                 m_nodes, 
                 m_nodesContent,
+                m_leafCountScanner.GetPrefixSum().Begin()(),
                 m_edgeMask.Begin()(), 
                 m_scannedEdgeMask.Begin()(),
                 d, eventCount);
-
-            leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), nodeCount, childCount, primitiveCount, g_currentLeafCount + lastLeaves, g_leafContentOffset);
+ 
+            leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), nodeCount, 2 * nodeCount, primitiveCount, g_currentLeafCount + lastLeaves, g_leafContentOffset);
 
             primitiveCount = leavesRes.interiorPrimitiveCount;
 
@@ -880,11 +877,11 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
             }
         }
 
+        g_interiorNodesCountOnThisLevel = 2 * (nodeCount - lastLeaves) - leavesRes.leafCount;
         g_nodeOffset = g_childNodeOffset;
         g_childNodeOffset += 2 * nodeCount;
         //update globals
         g_leafContentOffset += leavesRes.leafPrimitiveCount;
-        g_interiorNodesCountOnThisLevel = 2 * (nodeCount - lastLeaves) - leavesRes.leafCount;
         g_currentInteriorNodesCount += g_interiorNodesCountOnThisLevel;
         g_currentLeafCount += lastLeaves + leavesRes.leafCount;
         ct_printf("g_nodeOffset=%d g_childNodeOffset=%d g_leafContentOffset=%d g_interiorNodesCountOnThisLevel=%d g_currentInteriorNodesCount=%d g_currentLeafCount=%d\n", 
@@ -896,8 +893,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         {
             nutty::Copy(m_nodesBBox[0].Begin(), m_nodesBBox[1].Begin(), m_nodesBBox[1].Begin() + g_interiorNodesCountOnThisLevel);
         }
-        PRINT_BUFFER(m_activeNodesIsLeaf);
-        PrintStatus("End");
+
+        //PrintStatus("End");
 
         if(primitiveCount == 0 || g_interiorNodesCountOnThisLevel == 0) //all nodes are leaf nodes
         {
@@ -927,7 +924,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         }
         else
         {
-           // assert(L"0" && L"Make all nodes leaves");
+            //assert(L"0" && L"Make all nodes leaves");
+            ct_printf("bla\n");
         }
     }
 

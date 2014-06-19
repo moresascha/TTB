@@ -159,9 +159,9 @@ void cpuKDTree::_CreateTree(void)
         AABB& parentAABB = m_linearNodeAABBs[parent->aabb];
 
         CT_SPLIT_AXIS axis = getLongestAxis(parentAABB.GetMax() - parentAABB.GetMin());
-        ct_printf("%d [%f %f %f|%f %f %f]\n", axis, 
-            parentAABB.GetMin().x, parentAABB.GetMin().y, parentAABB.GetMin().z, 
-            parentAABB.GetMax().x, parentAABB.GetMax().y, parentAABB.GetMax().z);
+//         ct_printf("%d [%f %f %f|%f %f %f]\n", axis, 
+//             parentAABB.GetMin().x, parentAABB.GetMin().y, parentAABB.GetMin().z, 
+//             parentAABB.GetMax().x, parentAABB.GetMax().y, parentAABB.GetMax().z);
         m_events.clear();
         for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
         {
@@ -214,8 +214,8 @@ void cpuKDTree::_CreateTree(void)
                 primsBelow++;
             }
         }
-        //ct_printf("\n");
-        //ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
+        //if(IS_INVALD_SAH(currentBestSAH))
+        ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
         if(currentBestSAH == FLT_MAX)
         {
             parent->SetLeaf(true);
@@ -489,21 +489,21 @@ void cpuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
 CT_RESULT cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
 {
     checkState(m_build);
-    for(CTint i = 0; i < m_linearPrimAABBs.Size(); ++i)
-    {
-        _AABB& aabb = m_linearPrimAABBs.Get(i);
-
-        float mini = getAxis(aabb._min, g_axis);
-        float maxi = getAxis(aabb._max, g_axis);
-
-        if(maxi > g_split)
-        {
-            AABB _aabb;
-            _aabb.AddVertex(aabb._max);
-            _aabb.AddVertex(aabb._min);
-            dbLayer->DrawWiredBox(_aabb);
-        }
-    }
+//     for(CTint i = 0; i < m_linearPrimAABBs.Size(); ++i)
+//     {
+//         _AABB& aabb = m_linearPrimAABBs.Get(i);
+// 
+//         float mini = getAxis(aabb._min, g_axis);
+//         float maxi = getAxis(aabb._max, g_axis);
+// 
+//         if(maxi > g_split)
+//         {
+//             AABB _aabb;
+//             _aabb.AddVertex(aabb._max);
+//             _aabb.AddVertex(aabb._min);
+//             dbLayer->DrawWiredBox(_aabb);
+//         }
+//     }
    
     dbLayer->DrawWiredBox(m_linearNodeAABBs.Get(m_root));
  

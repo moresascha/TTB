@@ -103,7 +103,7 @@ __global__ void computeSAHSplits(
     splits.above[id] = above;
     splits.below[id] = below;
     splits.indexedSplit[id].index = id;
-    splits.indexedSplit[id].sah = nodeIndex == 0 && bla ? INVALID_SAH : getSAH(bbox, axis, split, below, above);
+    splits.indexedSplit[id].sah = getSAH(bbox, axis, split, below, above);
     splits.axis[id] = axis;
     splits.v[id] = split;
 }
@@ -292,6 +292,7 @@ __global__ void makeLealIfBadSplitOrLessThanMaxElements(
     CTbyte* nodeIsLeaf,
     CTbyte* isLeaf,
     Split splits,
+    CTbyte makeChildLeaves,
     CTuint N
     )
 {
@@ -303,14 +304,15 @@ __global__ void makeLealIfBadSplitOrLessThanMaxElements(
     {
         nodeIsLeaf[id] = 1;
     }
-    isLeaf[N + 2 * id + 0] = splits.below[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF;
-    isLeaf[N + 2 * id + 1] = splits.above[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF;
+    isLeaf[N + 2 * id + 0] = splits.below[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF || makeChildLeaves;
+    isLeaf[N + 2 * id + 1] = splits.above[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF || makeChildLeaves;
 }
 
 __global__ void compactPrimitivesFromEvents(
         Event events,
         Node nodes,
         NodeContent nodesContent,
+        const CTuint* __restrict leafScan,
         const CTuint* __restrict mask,
         const CTuint* __restrict scanned,
         CTuint depth,
@@ -322,9 +324,10 @@ __global__ void compactPrimitivesFromEvents(
     {
         CTuint dst = scanned[id];
         CTuint nodeIndex = events.nodeIndex[id];
-        nodesContent.nodeIndex[dst] = nodeIndex;
+        CTuint prefixLeaves = leafScan[nodeIndex/2];
+        nodesContent.nodeIndex[dst] = nodeIndex - 2 * prefixLeaves;
         nodesContent.primIndex[dst] = events.primId[id];
-        nodesContent.prefixSum[dst] = nodes.contentStart[nodeIndex];
+        nodesContent.prefixSum[dst] = nodes.contentStart[nodeIndex - 2 * prefixLeaves];
     }
 }
 
@@ -352,7 +355,7 @@ __global__ void setActiveNodesMask(
     }
 }
 
-void __device__ splitAABB(BBox* aabb, CTreal split, CTbyte axis, BBox* l, BBox* r)
+void __device__ splitAABB(const BBox* aabb, CTreal split, CTbyte axis, BBox* l, BBox* r)
 {
     l->_max = aabb->_max;
     l->_min = aabb->_min;
@@ -415,8 +418,8 @@ __global__ void initThisLevelInteriorNodes(
     CTuint nodeOffset,
     CTuint gotLeaves,
     CTuint N,
-    
-    CTuint* oldNodeContentStart)
+    CTuint* oldNodeContentStart,
+    CTbyte makeLeaves)
 {
     RETURN_IF_OOB(N);
 
@@ -427,7 +430,7 @@ __global__ void initThisLevelInteriorNodes(
 
     CTreal s = splits.v[split.index];
     CTbyte axis = splits.axis[split.index];
-    nodes.isLeaf[nodeId] = activeNodesLeaf[activeNodes[id]];
+    //nodes.isLeaf[nodeId] = activeNodesLeaf[activeNodes[id]];
     nodes.split[nodeId] = s;
     nodes.splitAxis[nodeId] = axis;
 
@@ -458,8 +461,8 @@ __global__ void initThisLevelInteriorNodes(
     nodes.leftChild[nodeId] = leftChildIndex;
     nodes.rightChild[nodeId] = rightChildIndex;
 
-    nodes.isLeaf[leftChildIndex] = below <= MAX_ELEMENTS_PER_LEAF;
-    nodes.isLeaf[rightChildIndex] = above <= MAX_ELEMENTS_PER_LEAF;
+    nodes.isLeaf[leftChildIndex] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    nodes.isLeaf[rightChildIndex] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
 
     BBox l;
     BBox r;

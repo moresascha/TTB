@@ -34,4 +34,6 @@ extern "C" void RT_SetRecDepth(int d);
 
 extern "C" void RT_IncDepth(void);
 
+extern "C" int RT_GetRecDepth(void);
+
 extern "C" void RT_DecDepth(void);

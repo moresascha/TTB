@@ -55,6 +55,7 @@ extern "C" __device__ Real3 getSunPos(void)
 #define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
 #define RECURSION 2
+#define MAX_RECURSION 4
 #define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
@@ -460,7 +461,7 @@ __global__ void _traceRays(
 
                 if(abs(dot(refraction, refraction)) > 0)
                 {
-                    r.rayWeight = weight * ratio * (1 - mat.alpha());
+                    r.rayWeight = weight * ratio * (1 - mat.alpha()) * mat.reflectivity();
                     r.setDir(refraction);
                     r.setOrigin(hitPos + (hitRes.isBackFace ? +RAY_HIT_NORMAL_DELTA * normal : -RAY_HIT_NORMAL_DELTA * normal));
                     r.clampToBBox();
@@ -485,7 +486,7 @@ __global__ void _traceRays(
         if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
         {
             r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
-            r.rayWeight *= 0.5;
+            r.rayWeight = .95;
             addRay(newShadowRays, rayIndex, r);
         }
 #endif
@@ -621,7 +622,7 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_shadowRayMask = new nutty::DeviceBuffer<uint>();
     g_sums = new nutty::DeviceBuffer<uint>();
 
-    unsigned int maxRaysLastBranch = width * height * (1 << (RECURSION - 1));
+    unsigned int maxRaysLastBranch = width * height * (1 << (MAX_RECURSION - 1));
     unsigned int maxRaysPerNode = width * height;
 
     g_rays[0]->Resize(maxRaysLastBranch);
@@ -832,9 +833,14 @@ extern "C" void RT_BindGeometry(Triangles& tries)
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_geometry, &tries, sizeof(Triangles), 0, cudaMemcpyHostToDevice));
 }
 
+extern "C" int RT_GetRecDepth(void)
+{
+    return g_recDepth;
+}
+
 extern "C" void RT_SetRecDepth(int d)
 {
-    g_recDepth =  d < 1 ? 1 : (d > RECURSION ? RECURSION : d);
+    g_recDepth =  d < 1 ? 1 : (d > MAX_RECURSION ? MAX_RECURSION : d);
 }
 
 extern "C" void RT_IncDepth(void)
