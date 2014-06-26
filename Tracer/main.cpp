@@ -33,6 +33,7 @@
 #include <chimera/Timer.h>
 #include <chimera/Vec3.h>
 #include <chimera/Mat4.h>
+#include <chimera/util.h>
 
 #include "ct_runtime.h"
 
@@ -391,7 +392,6 @@ void updateTree(ICTTree* tree, NodeGPUDataTransformer* gpuData)
         gpuData->Reset();
         gpuData->Resize(leafs, nodeCount);
 
-
         gpuData->Fill(tree, eCT_NODE_IS_LEAF, gpuData->lineartreeNodeIsLeaf);
         gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_START_INDEX, gpuData->lineartreeContentStart);
         gpuData->Fill(tree, eCT_LEAF_NODE_PRIM_COUNT, gpuData->lineartreeContentCount);
@@ -646,7 +646,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 // #define _CRTDBG_MAP_ALLOC
 //     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_CHECK_CRT_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_EVERY_16_DF);
 // #endif
-    
+
     width = (1024 * 3) / 2;
     height = (512 * 3) / 2;
     
@@ -710,7 +710,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     atlas->Init();
 
     CT_SAFE_CALL(CTInit(0));
-
+    
 //   createTestTree(CT_CREATE_TREE_CPU);
 //   print("\n\n\n");
 //   createTestTree(CT_CREATE_TREE_GPU);
@@ -728,9 +728,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     //CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
 
     std::vector<GeoHandle> cubeHandles;
-
+    chimera::util::cmRNG rng;
     CTuint addSum = 12*3;
-    int line = 2;
+    int line = 3;
     srand(0);
 
     for(int i = 0; i < line; ++i)
@@ -747,13 +747,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                 addSum += (hhandle.end - hhandle.start);
                 //model.SetTranslation(rand() % 10,4,rand() % 10);
                 float scale = 4;
+                float ox = rng.NextCubeFloat(2.1f);
+                float oy = rng.NextFloat(1.1f);
+                float oz = rng.NextCubeFloat(2.1f);
                 model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
+                model.Translate(ox, oy, oz);
                 CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
             }
         }
     }
 
-   // CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "Spiral_Caged.obj");
+    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
@@ -790,7 +795,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     //geoTransMatrix.SetTranslation(0,1,0);
     updateTree(tree, nodeGPUData);
 
-    CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer)); //collectdata
+    //CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer)); //collectdata
 
     const void* memory = NULL; 
     CTuint cnt;
@@ -814,6 +819,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     chimera::util::HTimer timer;
     timer.VReset();
     chimera::util::Vec3 v;
+
     while(1)
     {
         if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -878,9 +884,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             glUniformMatrix4fv(loc, 1, false, (float*)g_cam.GetIView());
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            debugLayer->ResetGeometry();
-
-            CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer));
+//             if(a)
+//             {
+//                 debugLayer->ResetGeometry();
+//                 CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer));
+//             }
             debugLayer->DrawGLGeo();
 
             glDisable(GL_BLEND);

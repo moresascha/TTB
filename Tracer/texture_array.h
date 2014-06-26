@@ -1,6 +1,6 @@
 #pragma once
 #include <cutil_inline.h>
-
+#include "cuda/globals.cuh"
 struct cuTextureObj
 {
     cudaArray_t array;

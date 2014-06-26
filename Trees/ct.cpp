@@ -161,12 +161,6 @@ CT_RESULT CT_API CTGetRawLinearMemory(const ICTTree* tree, CTuint* cnt, const vo
     return CT_SUCCESS;
 }
 
-CT_RESULT CT_API CTGetRootNode(const ICTTree* tree, ICTTreeNode** node)
-{
-    *node = tree->GetRoot();
-    return *node != NULL ? CT_SUCCESS : CT_INVALID_OPERATION;
-}
-
 CT_RESULT CT_API CTGetDepth(const ICTTree* tree, CTuint* depth)
 {
     *depth = tree->GetDepth();

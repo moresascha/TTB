@@ -52,8 +52,6 @@ int main(void)
 
     CT_SAFE_CALL(CTUpdate(tree));
 
-    CT_SAFE_CALL(CTGetRootNode(tree, &node));
-
     CT_SAFE_CALL(CTRelease());
     
     return 0;

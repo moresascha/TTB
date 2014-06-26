@@ -13,8 +13,6 @@ public:
 
     virtual CT_RESULT Update(void) = 0;
 
-    virtual ICTTreeNode* GetRoot(void) const = 0;
-
     virtual CT_RESULT DebugDraw(ICTTreeDebugLayer* dbLayer) const = 0;
 
     virtual CT_RESULT AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle) = 0;

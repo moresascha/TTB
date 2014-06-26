@@ -23,7 +23,7 @@ public:
 
 //Implementations
 
-#define BB_EPSILON 1e-3f
+#define BB_EPSILON 1e-4f
 
 class AABB : public ICTAABB
 {
@@ -175,8 +175,8 @@ public:
 
 struct _AABB
 {
-    CTreal3 _min;
-    CTreal3 _max;
+    CTreal3 m_min;
+    CTreal3 m_max;
 
     __device__ __host__ _AABB(void)
     {
@@ -185,8 +185,8 @@ struct _AABB
 
     __device__ __host__ _AABB(const _AABB& aabb)
     {
-        _min = aabb._min;
-        _max = aabb._max;
+        m_min = aabb.m_min;
+        m_max = aabb.m_max;
     }
 
     __device__ __host__ ~_AABB(void)
@@ -196,32 +196,32 @@ struct _AABB
 
     __device__ __host__  void Reset(void)
     {
-        _min.x = FLT_MAX;
-        _min.y = FLT_MAX;
-        _min.z = FLT_MAX;
+        m_min.x = FLT_MAX;
+        m_min.y = FLT_MAX;
+        m_min.z = FLT_MAX;
 
-        _max.x = -FLT_MAX;
-        _max.y = -FLT_MAX;
-        _max.z = -FLT_MAX;
+        m_max.x = -FLT_MAX;
+        m_max.y = -FLT_MAX;
+        m_max.z = -FLT_MAX;
     }
 
     __device__ __host__ void AddVertex(const CTreal3& p)
     {
-        _min.x = fminf(p.x - BB_EPSILON, _min.x);
-        _min.y = fminf(p.y - BB_EPSILON, _min.y);
-        _min.z = fminf(p.z - BB_EPSILON, _min.z);
+        m_min.x = fminf(p.x - BB_EPSILON, m_min.x);
+        m_min.y = fminf(p.y - BB_EPSILON, m_min.y);
+        m_min.z = fminf(p.z - BB_EPSILON, m_min.z);
 
-        _max.x = fmaxf(p.x + BB_EPSILON, _max.x);
-        _max.y = fmaxf(p.y + BB_EPSILON, _max.y);
-        _max.z = fmaxf(p.z + BB_EPSILON, _max.z);
+        m_max.x = fmaxf(p.x + BB_EPSILON, m_max.x);
+        m_max.y = fmaxf(p.y + BB_EPSILON, m_max.y);
+        m_max.z = fmaxf(p.z + BB_EPSILON, m_max.z);
     }
 
     __device__ __host__ CTreal get(byte axis, byte mm) const
     {
         switch(mm)
         {
-        case 0 : return getAxis(_min, axis);
-        case 1 : return getAxis(_max, axis);
+        case 0 : return getAxis(m_min, axis);
+        case 1 : return getAxis(m_max, axis);
         }
         return 0;
     }
@@ -243,12 +243,12 @@ struct _AABB
 
     __device__ __host__  const CTreal3& GetMin(void) const
     {
-        return _min;
+        return m_min;
     }
 
     __device__ __host__ const CTreal3& GetMax(void) const
     {
-        return _max;
+        return m_max;
     }
 };
 

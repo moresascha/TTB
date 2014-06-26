@@ -8,18 +8,10 @@
 #include <Scan.h>
 #include <cuda/cuda_helper.h>
 #include "memory.h"
-#include "shared_types.h"
 #include "device_heap.h"
-
-#define GlobalId (blockDim.x * blockIdx.x + threadIdx.x)
 
 #define EDGE_START ((byte)0)
 #define EDGE_END   ((byte)1)
-//#define EDGE_LEAF  ((byte)2)
-
-#define INVALID_ADDRESS ((uint)-1)
-#define FLT_MAX 3.402823466e+38F
-#define FLT_MAX_DIV2 (FLT_MAX/2.0f)
 
 template <
     typename T
@@ -201,7 +193,7 @@ protected:
     std::vector<CTulong> m_linearGeoHandles;
     std::map<CTGeometryHandle, GeometryRange> m_handleRangeMap;
 
-    void _DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const;
+    void _DebugDrawNodes(CTuint parent, AABB aabb, ICTTreeDebugLayer* dbLayer) const;
 
 public:
     cuKDTree(void);
@@ -339,6 +331,8 @@ private:
 
     void PrintStatus(const char* msg = NULL);
 
+    void ValidateTree(void);
+
     void ComputeSAH_Splits(
         CTuint nodeCount, 
         CTuint primitiveCount, 
@@ -351,20 +345,13 @@ private:
 
     MakeLeavesResult MakeLeaves(
         nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
+        CTuint g_nodeOffset, 
         CTuint nodeOffset, 
         CTuint nodeCount, 
         CTuint primitiveCount, 
         CTuint currentLeafCount, 
-        CTuint leafContentOffset);
-
-    MakeLeavesResult MakeLeavesFromBadSplits(
-        nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
-        CTuint nodeOffset, 
-        CTuint nodeCount, 
-        CTuint primitiveCount, 
-        CTuint currentLeafCount, 
-        CTuint leafContentOffset
-        );
+        CTuint leafContentOffset,
+        CTuint initNodeToLeafIndex);
 
     nutty::DeviceBuffer<CTuint> m_edgeMask;
     nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
@@ -408,8 +395,11 @@ private:
 
     nutty::DeviceBuffer<CTuint> m_lastNodeContentStartAdd;
 
+    nutty::DeviceBuffer<CTuint> m_activeNodesThisLevel;
     nutty::DeviceBuffer<CTuint> m_activeNodes;
+    nutty::DeviceBuffer<CTuint> m_newActiveNodes;
     nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeaf;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeafCompacted;
 
     DoubleBuffer<BBox> m_nodesBBox;
 

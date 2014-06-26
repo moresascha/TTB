@@ -63,11 +63,11 @@ __global__ void createEvents(
 
     BBox parentAxisAlignedBB = nodeBBoxes[node];
 
-    CTint axis = getLongestAxis(parentAxisAlignedBB._min, parentAxisAlignedBB._max);
+    CTint axis = getLongestAxis(parentAxisAlignedBB.m_min, parentAxisAlignedBB.m_max);
 
-    events.indexedEdge[start_index].v = getAxis(aabbs._min, axis);
+    events.indexedEdge[start_index].v = getAxis(aabbs.m_min, axis);
 
-    events.indexedEdge[end_index].v = getAxis(aabbs._max, axis);
+    events.indexedEdge[end_index].v = getAxis(aabbs.m_max, axis);
 }
 
 __global__ void computeSAHSplits(
@@ -95,14 +95,15 @@ __global__ void computeSAHSplits(
 
     BBox bbox = bboxes[nodeIndex];
 
-    byte axis = getLongestAxis(bbox._min, bbox._max);
+    byte axis = getLongestAxis(bbox.m_min, bbox.m_max);
 
-    CTuint below = scannedEdgeTypeStartMask[id]  - prefixPrims;
     CTuint above = primCount - scannedEdgeTypeEndMask[id] + prefixPrims - type;
+    CTuint below = scannedEdgeTypeStartMask[id] - prefixPrims;
 
     splits.above[id] = above;
     splits.below[id] = below;
     splits.indexedSplit[id].index = id;
+    //splits.indexedSplit[id].sah = (bla>=2 && nodeIndex==2)? INVALID_SAH : getSAH(bbox, axis, split, below, above);
     splits.indexedSplit[id].sah = getSAH(bbox, axis, split, below, above);
     splits.axis[id] = axis;
     splits.v[id] = split;
@@ -114,15 +115,23 @@ __global__ void classifyEdges(
         Split splits,
         const CTbyte* isLeaf,
         CTuint* edgeMask,
+        const CTuint* contentStartAdd,
         CTuint N)
 {
     RETURN_IF_OOB(N);
 
     CTuint nodeIndex = events.nodeIndex[id];
 
+    if(isLeaf[nodeIndex])
+    {
+        edgeMask[id] = 0;
+        events.nodeIndex[id] = -1;
+        return;
+    }
+
     CTbyte type = events.type[id];
 
-    CTuint edgesBeforeMe = 2 * nodes.contentStart[nodeIndex];
+    CTuint edgesBeforeMe = 2 * contentStartAdd[nodeIndex];
     IndexedSAHSplit is = splits.indexedSplit[edgesBeforeMe];
 
     CTreal split = splits.v[is.index];
@@ -130,12 +139,6 @@ __global__ void classifyEdges(
     CTreal v = events.indexedEdge[id].v;
 
     CTuint right = !(split > v || (v == split && type == EDGE_END));
-
-    if(isLeaf[nodeIndex])
-    {
-        edgeMask[id] = 0;
-        return;
-    }
             
     if(right)
     {
@@ -152,14 +155,13 @@ __global__ void classifyEdges(
 
 __global__ void setPrimBelongsToLeaf(
     NodeContent nodesContent,
-    const CTuint* __restrict activeNodes,
     const CTbyte* __restrict isLeaf,
     CTuint N)
 {
     RETURN_IF_OOB(N);
 
     CTuint nodeIndex = nodesContent.nodeIndex[id];
-    nodesContent.primIsLeaf[id] = isLeaf[nodeIndex];
+    nodesContent.primIsLeaf[id] = isLeaf[nodeIndex] > 0;
 }
 
 __global__ void setPrimBelongsToLeafFromEvents(
@@ -168,14 +170,15 @@ __global__ void setPrimBelongsToLeafFromEvents(
     const CTbyte* __restrict isLeaf,
     const CTuint* __restrict mask,
     const CTuint* __restrict scanned,
-    CTuint N)
+    CTuint N, CTuint* blbla)
 {
     RETURN_IF_OOB(N);
 
     if(mask[id])
     {
         CTuint nodeIndex = events.nodeIndex[id];
-        nodesContent.primIsLeaf[scanned[id]] = isLeaf[nodeIndex];
+        nodesContent.primIsLeaf[scanned[id]] = isLeaf[nodeIndex] > 0;
+        blbla[scanned[id]] = nodeIndex;
     }
 }
 
@@ -204,8 +207,9 @@ __global__ void createInteriorAndLeafContentCountMasks(
     CTuint N)
 {
     RETURN_IF_OOB(N);
-    leafMask[id] = isLeaf[id] * contentCount[id];
-    interiorMask[id] = (1 ^ isLeaf[id]) * contentCount[id];
+    CTbyte mask = isLeaf[id];
+    leafMask[id] = (mask == 1) * contentCount[id];
+    interiorMask[id] = (mask < 2) * (1 ^ mask) * contentCount[id];
 }
 
 __global__ void compactLeafNInteriorContent(
@@ -252,11 +256,12 @@ __global__ void compactLeafNInteriorData(
     const CTuint* __restrict primIsLeafScanned,
     const CTuint* __restrict leafCountScan, 
     const CTuint* __restrict interiorCountScan,
+    const CTuint* __restrict activeNodes,
     CTuint* newContentCount,
     CTuint* newContentStart,
     CTuint* leafContentStart, 
     CTuint* leafContentCount,
-    CTuint* activeNodes,
+    CTuint* newActiveNodes,
     BBox* newBBxes,
     CTuint leafCount,
     CTuint contentStartOffset,
@@ -270,26 +275,58 @@ __global__ void compactLeafNInteriorData(
 //         leafContentCount[lastLeafCount + id] = nodesContentCount[id];
 //         return;
 //     }
-
-    if(isLeaf[id])
+    CTbyte leafMask = isLeaf[id];
+    CTuint dst = leafCountScan[id];
+    if(leafMask && leafMask < 2)
     {
-        CTuint dst = leafCountScan[id];
         leafContentStart[leafCount + dst] = contentStartOffset + scannedLeafContent[id];
         leafContentCount[leafCount + dst] = nodesContentCount[id];
     }
     else
     {
         CTuint dst = interiorCountScan[id];
-        activeNodes[dst] = id;
+        newActiveNodes[dst] = activeNodes[id];
         newContentCount[dst] = nodesContentCount[id];
         newContentStart[dst] = scannedInteriorContent[id]; //scannedInteriorContentstart[id];
         newBBxes[dst] = nodeBBoxes[id];
     }
 }
 
-__global__ void makeLealIfBadSplitOrLessThanMaxElements(
+template <CTbyte init>
+__global__ void setNodeToLeafIndex(
+    CTuint* nodeToLeafIndex,
+    const CTuint* __restrict activeNodes,
+    const CTuint* __restrict isLeafScan,
+    const CTbyte* __restrict isLeafMask, 
+    CTuint offset,
+    CTuint leafCount,
+    CTuint N
+    )
+{
+    RETURN_IF_OOB(N);
+    if(init == 2)
+    {
+        nodeToLeafIndex[offset + id] = 0;
+        return;
+    }
+    CTbyte isLeaf = isLeafMask[id];
+    if(isLeaf && isLeaf < 2)
+    {
+        if(init)
+        {
+            nodeToLeafIndex[activeNodes[id] + offset] = leafCount + isLeafScan[id];
+        }
+        else
+        {
+            nodeToLeafIndex[activeNodes[id] + offset] += leafCount + isLeafScan[id];
+        }
+    }
+}
+
+__global__ void makeLeafIfBadSplitOrLessThanMaxElements(
     Node nodes,
     CTbyte* nodeIsLeaf,
+    CTuint* ativeNodes,
     CTbyte* isLeaf,
     Split splits,
     CTbyte makeChildLeaves,
@@ -298,14 +335,19 @@ __global__ void makeLealIfBadSplitOrLessThanMaxElements(
 {
     RETURN_IF_OOB(N);
     CTuint splitAdd = 2 * nodes.contentStart[id];
-    CTbyte isBad = IS_INVALD_SAH(splits.indexedSplit[splitAdd].sah);
+    IndexedSAHSplit split = splits.indexedSplit[splitAdd];
+    CTbyte isBad = IS_INVALD_SAH(split.sah);
     isLeaf[id] = isBad;
     if(isBad)
     {
-        nodeIsLeaf[id] = 1;
+        nodeIsLeaf[ativeNodes[id]] = 1;
     }
-    isLeaf[N + 2 * id + 0] = splits.below[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF || makeChildLeaves;
-    isLeaf[N + 2 * id + 1] = splits.above[splits.indexedSplit[splitAdd].index] <= MAX_ELEMENTS_PER_LEAF || makeChildLeaves;
+    CTuint below = splits.below[split.index];
+    CTuint above = splits.above[split.index];
+    isLeaf[N + 2 * id + 0] = isBad ? 2 : ((below <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
+    isLeaf[N + 2 * id + 1] = isBad ? 2 : ((above <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
+//     nodeIsLeaf[N + 2 * id + 0] = isBad ? 0 : ((below <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
+//     nodeIsLeaf[N + 2 * id + 1] = isBad ? 0 : ((above <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
 }
 
 __global__ void compactPrimitivesFromEvents(
@@ -316,7 +358,8 @@ __global__ void compactPrimitivesFromEvents(
         const CTuint* __restrict mask,
         const CTuint* __restrict scanned,
         CTuint depth,
-        CTuint N)
+        CTuint N,
+        CTuint blabla)
 {
     RETURN_IF_OOB(N);
 
@@ -324,10 +367,13 @@ __global__ void compactPrimitivesFromEvents(
     {
         CTuint dst = scanned[id];
         CTuint nodeIndex = events.nodeIndex[id];
-        CTuint prefixLeaves = leafScan[nodeIndex/2];
-        nodesContent.nodeIndex[dst] = nodeIndex - 2 * prefixLeaves;
+        CTuint parent = nodeIndex/2;
+        CTuint prefixLeaves = leafScan[parent];
+        CTuint newNodeIndex = nodeIndex - 2 * prefixLeaves;
+        nodesContent.nodeIndex[dst] = newNodeIndex;
         nodesContent.primIndex[dst] = events.primId[id];
-        nodesContent.prefixSum[dst] = nodes.contentStart[nodeIndex - 2 * prefixLeaves];
+        nodesContent.prefixSum[dst] = nodes.contentStart[newNodeIndex];
+        //blabla[dst] = id;
     }
 }
 
@@ -352,29 +398,6 @@ __global__ void setActiveNodesMask(
     else
     {
         ids[id] = id;
-    }
-}
-
-void __device__ splitAABB(const BBox* aabb, CTreal split, CTbyte axis, BBox* l, BBox* r)
-{
-    l->_max = aabb->_max;
-    l->_min = aabb->_min;
-    r->_max = aabb->_max;
-    r->_min = aabb->_min;
-    switch(axis)
-    {
-    case 0:
-        {
-            l->_max.x = split; r->_min.x = split; 
-        } break;
-    case 1:
-        {
-            l->_max.y = split; r->_min.y = split; 
-        } break;
-    case 2:
-        {
-            l->_max.z = split; r->_min.z = split; 
-        } break;
     }
 }
 
@@ -410,11 +433,15 @@ __global__ void initThisLevelInteriorNodes(
     const CTuint* __restrict isPrimLeafScanned,
     const CTuint* __restrict activeNodes,
     const CTbyte* __restrict activeNodesLeaf,
+    const CTuint* __restrict activeNodesThisLevel,
     BBox* oldBBoxes,
     BBox* newBBoxes,
     CTuint* newContentCount,
     CTuint* newContentStart,
+    CTuint* newActiveNodes,
+    CTbyte* activeNodesIsLeaf,
     CTuint childOffset,
+    CTuint childOffset2,
     CTuint nodeOffset,
     CTuint gotLeaves,
     CTuint N,
@@ -423,21 +450,29 @@ __global__ void initThisLevelInteriorNodes(
 {
     RETURN_IF_OOB(N);
 
-    CTuint nodeId = nodeOffset + activeNodes[id];
+    CTuint an = activeNodes[id];
+    CTuint can = activeNodesThisLevel[id];
+    CTuint nodeId = nodeOffset + an;
 
-    CTuint edgesBeforeMe = 2 * oldNodeContentStart[gotLeaves ? activeNodes[id] : id]; //nodes.contentStart[id];
+//     if(nodes.isLeaf[nodeOffset + activeNodes[id]])
+//     {
+//         activeNodesIsLeaf[2 * id + 0] = 2;
+//         activeNodesIsLeaf[2 * id + 1] = 2;
+//         return;
+//     }
+
+    CTuint edgesBeforeMe = 2 * oldNodeContentStart[can];
     IndexedSAHSplit split = splits.indexedSplit[edgesBeforeMe];
 
     CTreal s = splits.v[split.index];
     CTbyte axis = splits.axis[split.index];
-    //nodes.isLeaf[nodeId] = activeNodesLeaf[activeNodes[id]];
     nodes.split[nodeId] = s;
     nodes.splitAxis[nodeId] = axis;
 
-    CTuint above = splits.above[split.index];
     CTuint below = splits.below[split.index];
+    CTuint above = splits.above[split.index];
 
-    CTuint dst = gotLeaves ? interiorNodesScan[id] : id;
+    CTuint dst = id; //gotLeaves ? interiorNodesScan[id] : id;
 
     newContentCount[2 * dst + 0] = below;
     newContentCount[2 * dst + 1] = above;
@@ -446,23 +481,22 @@ __global__ void initThisLevelInteriorNodes(
     CTuint belowPrims = ltmp;
     CTuint abovePrims = ltmp + below;
 
-    if(gotLeaves)
-    {
-       // belowPrims = belowPrims - isPrimLeafScanned[belowPrims];
-       // abovePrims = abovePrims - isPrimLeafScanned[abovePrims];
-    }
-
     newContentStart[2 * dst + 0] = belowPrims;
     newContentStart[2 * dst + 1] = abovePrims;
 
-    CTuint leftChildIndex = childOffset + 2 * id + 0;
-    CTuint rightChildIndex = childOffset + 2 * id + 1;
+    CTuint leftChildIndex = childOffset + 2 * can + 0;
+    CTuint rightChildIndex = childOffset + 2 * can + 1;
 
     nodes.leftChild[nodeId] = leftChildIndex;
     nodes.rightChild[nodeId] = rightChildIndex;
 
-    nodes.isLeaf[leftChildIndex] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
-    nodes.isLeaf[rightChildIndex] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    nodes.isLeaf[childOffset + 2 * can + 0] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    nodes.isLeaf[childOffset + 2 * can + 1] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+
+    activeNodesIsLeaf[2 * id + 0] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    activeNodesIsLeaf[2 * id + 1] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    newActiveNodes[2 * id + 0] = 2 * can + 0;
+    newActiveNodes[2 * id + 1] = 2 * can + 1;
 
     BBox l;
     BBox r;

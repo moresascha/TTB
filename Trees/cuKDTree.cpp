@@ -7,6 +7,7 @@
 #include "output.h"
 #include "shared_kernel.h"
 #include "ct_debug.h"
+#include "vec_functions.h"
 
 cuKDTree::cuKDTree(void): m_depth(0xFF), m_initialized(false)
 {
@@ -17,7 +18,7 @@ CT_RESULT cuKDTree::Init(CTuint flags)
     return CT_SUCCESS;
 }
 
-void cuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
+void cuKDTree::_DebugDrawNodes(CTuint parent, AABB aabb, ICTTreeDebugLayer* dbLayer) const
 {
     if(m_nodes_IsLeaf[parent])
     {
@@ -36,36 +37,37 @@ void cuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
     CTint other0 = (axis + 1) % 3;
     CTint other1 = (axis + 2) % 3;
 
-    AABB aaba;// = m_linearNodeAABBs.Get(parent);
-
-    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
-    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
-    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
-    setAxis(end, other1, getAxis(aaba.GetMin(), other1));
+    setAxis(start, other0, getAxis(aabb.GetMin(), other0));
+    setAxis(start, other1, getAxis(aabb.GetMin(), other1));
+    setAxis(end, other0, getAxis(aabb.GetMax(), other0));
+    setAxis(end, other1, getAxis(aabb.GetMin(), other1));
     dbLayer->DrawLine(start, end);
 
-    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
-    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
-    setAxis(end, other0, getAxis(aaba.GetMin(), other0));
-    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    setAxis(start, other0, getAxis(aabb.GetMin(), other0));
+    setAxis(start, other1, getAxis(aabb.GetMin(), other1));
+    setAxis(end, other0, getAxis(aabb.GetMin(), other0));
+    setAxis(end, other1, getAxis(aabb.GetMax(), other1));
     dbLayer->DrawLine(start, end);
 
-    setAxis(start, other0, getAxis(aaba.GetMin(), other0));
-    setAxis(start, other1, getAxis(aaba.GetMax(), other1));
-    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
-    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    setAxis(start, other0, getAxis(aabb.GetMin(), other0));
+    setAxis(start, other1, getAxis(aabb.GetMax(), other1));
+    setAxis(end, other0, getAxis(aabb.GetMax(), other0));
+    setAxis(end, other1, getAxis(aabb.GetMax(), other1));
     dbLayer->DrawLine(start, end);
 
-    setAxis(start, other0, getAxis(aaba.GetMax(), other0));
-    setAxis(start, other1, getAxis(aaba.GetMin(), other1));
-    setAxis(end, other0, getAxis(aaba.GetMax(), other0));
-    setAxis(end, other1, getAxis(aaba.GetMax(), other1));
+    setAxis(start, other0, getAxis(aabb.GetMax(), other0));
+    setAxis(start, other1, getAxis(aabb.GetMin(), other1));
+    setAxis(end, other0, getAxis(aabb.GetMax(), other0));
+    setAxis(end, other1, getAxis(aabb.GetMax(), other1));
     dbLayer->DrawLine(start, end);
 
     CTuint left = m_nodes_LeftChild[parent];
     CTuint right = m_nodes_RightChild[parent];
-    _DebugDrawNodes(left, dbLayer);
-    _DebugDrawNodes(right, dbLayer);
+    AABB l;
+    AABB r;
+    splitAABB(&aabb, split, axis, &l, &r);
+    _DebugDrawNodes(left, l, dbLayer);
+    _DebugDrawNodes(right, r, dbLayer);
 }
 
 CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
@@ -76,10 +78,10 @@ CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
         return CT_SUCCESS;
     }
     AABB aabb;
-    aabb.m_min = m_sceneBBox[0]._min;
-    aabb.m_max = m_sceneBBox[0]._max;
+    aabb.m_min = m_sceneBBox[0].GetMin();
+    aabb.m_max = m_sceneBBox[0].GetMax();
     dbLayer->DrawWiredBox(aabb);
-   // _DebugDrawNodes(0, dbLayer);
+    _DebugDrawNodes(0, aabb, dbLayer);
     return CT_SUCCESS;
 }
 

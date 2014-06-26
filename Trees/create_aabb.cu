@@ -4,7 +4,6 @@
 #include "ct.h"
 #include "geometry.h"
 #include <cuda/Globals.cuh>
-#include "cpuKDTree.h"
 
 template<>
 struct ShrdMemory<_AABB>
@@ -71,8 +70,8 @@ struct AABB_OP
     __device__ _AABB operator()(_AABB& t0, _AABB& t1)
     {
         _AABB res;
-        res._min = min3(t0._min, t1._min);
-        res._max = max3(t0._max, t1._max);
+        res.m_min = min3(t0.m_min, t1.m_min);
+        res.m_max = max3(t0.m_max, t1.m_max);
         return res;
     }
 };

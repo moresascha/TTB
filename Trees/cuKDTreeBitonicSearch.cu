@@ -3,6 +3,7 @@
 #define NUTTY_DEBUG
 #endif
 
+#include <chimera/Timer.h>
 #include "cuKDTree.h"
 #include "kd_kernel.h"
 #include "shared_kernel.h"
@@ -17,7 +18,7 @@
 #include <cuda/Globals.cuh>
 #include "buffer_print.h"
 
-#define PRINT_OUT
+#undef PRINT_OUT
 #ifndef _DEBUG
 #undef PRINT_OUT
 #endif
@@ -127,9 +128,73 @@ struct ReduceBBox
     __device__  BBox operator()(const BBox& t0, const BBox& t1)
     {
         BBox bbox;
-        bbox._min = fminf(t0._min, t1._min);
-        bbox._max = fmaxf(t0._max, t1._max);
+        bbox.m_min = fminf(t0.m_min, t1.m_min);
+        bbox.m_max = fmaxf(t0.m_max, t1.m_max);
         return bbox;
+    }
+};
+
+template <
+    typename T
+>
+struct InvTypeOp
+{
+    __device__ T operator()(T elem)
+    {
+        return (elem < 2) * (elem ^ 1);
+    }
+
+    T GetNeutral(void)
+    {
+        return 0;
+    }
+};
+
+template <
+    typename T
+>
+struct TypeOp
+{
+    __device__ T operator()(T elem)
+    {
+        return (elem < 2) * elem;
+    }
+
+    T GetNeutral(void)
+    {
+        return 0;
+    }
+};
+
+template <
+    typename T
+>
+struct EventStartScanOp
+{
+    __device__ T operator()(T elem)
+    {
+        return elem ^ 1;
+    }
+
+    T GetNeutral(void)
+    {
+        return 1;
+    }
+};
+
+template <
+    typename T
+>
+struct EventEndScanOp
+{
+    __device__ T operator()(T elem)
+    {
+        return elem;
+    }
+
+    T GetNeutral(void)
+    {
+        return 0;
     }
 };
 
@@ -137,17 +202,9 @@ void cuKDTreeBitonicSearch::InitBuffer(void)
 {
     CTuint primitiveCount = m_orginalVertices.Size() / 3;
 
-    m_depth = (byte)min(32, max(1, (m_depth == 0xFF ? GenerateDepth(primitiveCount) : m_depth)));
-
-//     CTuint maxlevelInteriorNodesCount = elemsBeforeLevel(m_depth);
-// 
-//     CTuint maxLeafNodesCount = elemsOnLevel(m_depth);
-// 
-//     CTuint maxNodeCount = maxlevelInteriorNodesCount + maxLeafNodesCount;
+    m_depth = (byte)min(64, max(1, (m_depth == 0xFF ? GenerateDepth(primitiveCount) : m_depth)));
 
     m_primAABBs.Resize(primitiveCount); nutty::ZeroMem(m_primAABBs);
-
-    //m_sceneBBox.Resize(1); nutty::ZeroMem(m_sceneBBox);
 
     GrowNodeMemory();
     GrowPerLevelNodeMemory(64);
@@ -191,6 +248,8 @@ void cuKDTreeBitonicSearch::GrowPerLevelNodeMemory(CTuint newSize)
 {
     m_activeNodesIsLeaf.Resize(newSize);
     m_activeNodes.Resize(newSize);
+    m_activeNodesThisLevel.Resize(newSize);
+    m_newActiveNodes.Resize(newSize);
     m_nodesBBox.Resize(newSize);
     m_nodes_ContentStartAdd.Resize(newSize);
     m_nodes_ContentCount.Resize(newSize);
@@ -275,83 +334,19 @@ void cuKDTreeBitonicSearch::GrowPrimitiveEventMemory(void)
     m_edgeMaskSums.Resize(eventCount); //way to big but /care
 }
 
-template <
-    typename T
->
-struct InvTypeOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem ^ 1;
-    }
-
-    T GetNeutral(void)
-    {
-        return 0;
-    }
-};
-
-template <
-    typename T
->
-struct TypeOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem;
-    }
-
-    T GetNeutral(void)
-    {
-        return 0;
-    }
-};
-
-template <
-    typename T
->
-struct EventStartScanOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem ^ 1;
-    }
-
-    T GetNeutral(void)
-    {
-        return 1;
-    }
-};
-
-template <
-    typename T
->
-struct EventEndScanOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem;
-    }
-
-    T GetNeutral(void)
-    {
-        return 0;
-    }
-};
-
 void cuKDTreeBitonicSearch::PrintStatus(const char* msg /* = NULL */)
 {
     ct_printf("PrintStatus: %s\n", msg == NULL ? "" : msg);
-    PRINT_BUFFER(m_activeNodes);
-    PRINT_BUFFER(m_nodesBBox[0]);
+    //PRINT_BUFFER(m_activeNodes);
+    //PRINT_BUFFER(m_nodesBBox[0]);
     PRINT_BUFFER(m_primNodeIndex);
     //PRINT_BUFFER(m_primIndex);
-    PRINT_BUFFER(m_primPrefixSum);
+    //PRINT_BUFFER(m_primPrefixSum);
     PRINT_BUFFER(m_nodes_ContentCount);
     PRINT_BUFFER(m_nodes_ContentStartAdd);
-    PRINT_BUFFER(m_nodes_Split);
-    PRINT_BUFFER(m_nodes_SplitAxis);
-    PRINT_BUFFER(m_nodes_IsLeaf);
+    //PRINT_BUFFER(m_nodes_Split);
+    //PRINT_BUFFER(m_nodes_SplitAxis);
+    //PRINT_BUFFER(m_nodes_IsLeaf);
     //PRINT_BUFFER(m_leafNodesContent);
     //PRINT_BUFFER(m_leafNodesContentCount);
     //PRINT_BUFFER(m_leafNodesContentStart);
@@ -367,7 +362,7 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
 {
     CTuint elementBlock = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
     CTuint elementGrid = nutty::cuda::GetCudaGrid(primitiveCount, elementBlock);
-    static CTuint bla = 0;
+
     //nutty::ZeroMem(m_events_NodeIndex[0]);
 
     CTuint nodeBlock = nutty::cuda::GetCudaBlock(nodeCount, 256U);
@@ -421,12 +416,9 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
 
     EventEndScanOp<CTbyte> op1;
     nutty::ExclusiveScan(m_events_Type[1].Begin(), m_events_Type[1].Begin() + eventCount, m_scannedEventTypeEndMask.Begin(), m_eventTypeMaskSums.Begin(), op1);
-
-    CTuint bla0 = m_scannedEventTypeStartMask[eventCount - 1];
-    CTuint bla1 = m_scannedEventTypeEndMask[eventCount - 1];
-
+        
     DEVICE_SYNC_CHECK();
-
+    static CTuint bla = 0;
     computeSAHSplits<<<eventGrid, eventBlock>>>(
         eventsDst,
         nodesContentCount,
@@ -437,16 +429,17 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
         m_scannedEventTypeEndMask.Begin()(),
         eventCount,
         bla);
-    bla = 1;
-    start = 0;
+    bla++;
+    
 #if 0
-    for(int i = 0; i < eventCount; ++i)
+    for(int i = 0; i < eventCount && bla == 8; ++i)
     {
-        ct_printf("%d [%d %d] id=%d Split=%.4f SAH=%.4f\n", i, m_splits_Below[i], m_splits_Above[i], 
-            m_events_IndexedEdge[i].index, m_events_IndexedEdge[i].v, m_splits_IndexedSplit[i].sah);
+        ct_printf("%d [%d %d] id=%d Split=%.4f SAH=%.4f %d\n", i, m_splits_Below[i], m_splits_Above[i], 
+            m_events_IndexedEdge[i].index, m_events_IndexedEdge[i].v, m_splits_IndexedSplit[i].sah, m_scannedEventTypeEndMask[i]);
     }
 #endif
 
+    start = 0;
     for(int i = 0; i < nodeCount; ++i)
     {
         CTuint cc = hNodesContentCount[i];
@@ -467,12 +460,25 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
         DEVICE_SYNC_CHECK();
 #ifdef PRINT_OUT
         IndexedSAHSplit s = *(m_splits_IndexedSplit.Begin() + start);
-        ct_printf("id=%d, ", s.index);
+        std::stringstream ss;
+        ss << m_nodesBBox[0][i];
+        ct_printf("%s ", ss.str().c_str());
+        ct_printf("id=%d, memoryadd=%d ", s.index, start);
         CTreal plane = m_splits_Plane[s.index];
         CTbyte axis = m_splits_Axis[s.index];
         CTuint below = m_splits_Below[s.index];
         CTuint above = m_splits_Above[s.index];
         ct_printf("SPLIT= %d %f %f %d-%d\n", (CTuint)axis, plane, s.sah, below, above);
+
+//         for(int i = start; i < start + length && IS_INVALD_SAH(s.sah); ++i)
+//         {
+//             ct_printf("%d [%d %d] id=%d Split=%.4f SAH=%.4f %d\n", i, m_splits_Below[i], m_splits_Above[i], 
+//                 m_events_IndexedEdge[i].index, m_events_IndexedEdge[i].v, m_splits_IndexedSplit[i].sah, m_scannedEventTypeEndMask[i]);
+//         }
+//         if(IS_INVALD_SAH(s.sah))
+//         {
+//             __debugbreak();
+//         }
 #endif
         start += length;
     }
@@ -482,7 +488,7 @@ CTuint cuKDTreeBitonicSearch::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceB
 {
     m_leafCountScanner.Resize(nodeRange);
     m_leafCountScanner.ExcScan(isLeafBegin + nodeOffset, isLeafBegin + nodeOffset + nodeRange, TypeOp<CTbyte>());
-    CTuint leafCount = m_leafCountScanner.GetPrefixSum()[nodeRange-1] + *(isLeafBegin + nodeOffset + nodeRange - 1);
+    CTuint leafCount = m_leafCountScanner.GetPrefixSum()[nodeRange-1] + (*(isLeafBegin + nodeOffset + nodeRange - 1) == 1);
 
     if(!leafCount)
     {
@@ -515,11 +521,13 @@ CTuint cuKDTreeBitonicSearch::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceB
 MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
     nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, 
     /*nutty::DeviceBuffer<CTbyte>::iterator& isNodeLeafFinalBegin, */
+    CTuint g_nodeOffset, 
     CTuint nodeOffset, 
     CTuint nodeCount, 
     CTuint primitiveCount, 
     CTuint currentLeafCount, 
-    CTuint leafContentOffset)
+    CTuint leafContentOffset,
+    CTuint initNodeToLeafIndex)
 {
     CTuint leafCount = CheckRangeForLeavesAndPrepareBuffer(isLeafBegin, nodeOffset, nodeCount);
 
@@ -547,6 +555,29 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
 
     m_primIsLeafScanner.ExcScan(m_primIsLeaf.Begin(), m_primIsLeaf.Begin() + primitiveCount, TypeOp<CTbyte>());
     m_primIsNoLeafScanner.ExcScan(m_primIsLeaf.Begin(), m_primIsLeaf.Begin() + primitiveCount, InvTypeOp<CTbyte>());
+
+    if(initNodeToLeafIndex)
+    {
+        setNodeToLeafIndex<1><<<nodeGrid, nodeBlock>>>(
+            m_nodes_NodeIdToLeafIndex.Begin()(),
+            m_activeNodes.Begin()(),
+            m_leafCountScanner.GetPrefixSum().Begin()(),
+            m_activeNodesIsLeaf.Begin()() + nodeOffset,
+            g_nodeOffset,
+            currentLeafCount,
+            nodeCount);
+    }
+    else
+    {
+        setNodeToLeafIndex<0><<<nodeGrid, nodeBlock>>>(
+            m_nodes_NodeIdToLeafIndex.Begin()(),
+            m_activeNodes.Begin()(),
+            m_leafCountScanner.GetPrefixSum().Begin()(),
+            m_activeNodesIsLeaf.Begin()(),
+            g_nodeOffset,
+            currentLeafCount,
+            nodeCount);
+    }
     
     compactLeafNInteriorData<<<nodeGrid, nodeBlock>>>(
         m_interiorContentScanner.GetPrefixSum().Begin()(), 
@@ -559,11 +590,12 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
         m_primIsLeafScanner.GetPrefixSum().Begin()(),
         m_leafCountScanner.GetPrefixSum().Begin()(), 
         m_interiorCountScanner.GetPrefixSum().Begin()(),
+        m_activeNodes.Begin()(),
         m_newNodesContentCount.Begin()(),
         m_newNodesContentStartAdd.Begin()(),
         m_leafNodesContentStart.Begin()(),
         m_leafNodesContentCount.Begin()(),
-        m_activeNodes.Begin()(),
+        m_newActiveNodes.Begin()(),
         m_nodesBBox[0].Begin()(),
 
         currentLeafCount, leafContentOffset, nodeCount
@@ -574,6 +606,7 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
     {
         nutty::Copy(m_nodes_ContentCount.Begin(), m_newNodesContentCount.Begin(), m_newNodesContentCount.Begin() + nodeCount);
         nutty::Copy(m_nodes_ContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin() + nodeCount);
+        nutty::Copy(m_activeNodes.Begin(), m_newActiveNodes.Begin(), m_newActiveNodes.Begin() + nodeCount);
     }
 
     if(currentLeafCount)
@@ -627,57 +660,6 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
     return result;
 }
 
-MakeLeavesResult cuKDTreeBitonicSearch::MakeLeavesFromBadSplits(
-    nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, 
-    CTuint nodeOffset, 
-    CTuint nodeCount,
-    CTuint primitiveCount, 
-    CTuint currentLeafCount, 
-    CTuint leafContentOffset)
-{
-    CTuint leafCount = CheckRangeForLeavesAndPrepareBuffer(isLeafBegin, nodeOffset, nodeCount);
-
-    if(!leafCount)
-    {
-        MakeLeavesResult result;
-        result.leafCount = 0;
-        result.interiorPrimitiveCount = primitiveCount;
-        result.leafPrimitiveCount = 0;
-        return result;
-    }
-
-    m_leafNodesContentStart.Resize(currentLeafCount + leafCount);
-    m_leafNodesContentCount.Resize(currentLeafCount + leafCount);
-
-    CTuint nodeBlock = nutty::cuda::GetCudaBlock(nodeCount, 256U);
-    CTuint nodeGrid = nutty::cuda::GetCudaGrid(nodeCount, nodeBlock);
-
-    compactLeafNInteriorData<<<nodeGrid, nodeBlock>>>(
-        m_interiorContentScanner.GetPrefixSum().Begin()(), 
-        m_leafContentScanner.GetPrefixSum().Begin()(),
-        m_nodes_ContentCount.Begin()(),
-        m_nodes_ContentStartAdd.Begin()(),
-        m_nodesBBox[1].Begin()(),
-        isLeafBegin() + nodeOffset,
-
-        m_primIsLeafScanner.GetPrefixSum().Begin()(),
-        m_leafCountScanner.GetPrefixSum().Begin()(), 
-        m_interiorCountScanner.GetPrefixSum().Begin()(),
-        m_newNodesContentCount.Begin()(),
-        m_newNodesContentStartAdd.Begin()(),
-        m_leafNodesContentStart.Begin()(),
-        m_leafNodesContentCount.Begin()(),
-        m_activeNodes.Begin()(),
-        m_nodesBBox[0].Begin()(),
-
-        currentLeafCount, leafContentOffset, nodeCount
-        );
-
-    CTuint block = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
-    CTuint grid = nutty::cuda::GetCudaGrid(primitiveCount, block);
-
-}
-
 CT_RESULT cuKDTreeBitonicSearch::Update(void)
 {
     if(!m_initialized)
@@ -707,8 +689,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     static float3 min3f = -max3f;
 
     BBox bboxN;
-    bboxN._min = max3f; 
-    bboxN._max = min3f;
+    bboxN.m_min = max3f; 
+    bboxN.m_max = min3f;
     m_sceneBBox.Resize(m_primAABBs.Size()/2);
     nutty::Reduce(m_sceneBBox.Begin(), m_primAABBs.Begin(), m_primAABBs.End(), ReduceBBox(), bboxN);
 
@@ -723,13 +705,19 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     CTuint g_currentLeafCount = 0;
     CTuint g_leafContentOffset = 0;
     CTuint g_childNodeOffset = 1;
+    CTuint g_childNodeOffset2 = 1;
     CTuint g_nodeOffset = 0;
-
+    CTuint g_nodeOffset2 = 0;
+    CTuint g_lastChildCount = 0;
+    CTuint g_entries = 1;
+    
     m_activeNodes.Insert(0, 0);
-  
-    for(CTbyte d = 0; d < m_depth; ++d)
+    m_nodes_NodeIdToLeafIndex.Insert(0, 0);
+    nutty::ZeroMem(m_nodes_NodeIdToLeafIndex);
+    double time = 0;
+    for(CTbyte d = 0; d <= m_depth; ++d)
     {
-        ct_printf("\nNew Level=%d\n", d);
+        ct_printf("\nNew Level=%d (%d)\n", d, m_depth);
         nutty::ZeroMem(m_activeNodesIsLeaf);
         CTuint nodeCount = g_interiorNodesCountOnThisLevel;
         CTuint nodeBlock = nutty::cuda::GetCudaBlock(nodeCount, 256U);
@@ -738,13 +726,19 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         CTuint eventCount = 2 * primitiveCount;
         CTuint eventBlock = nutty::cuda::GetCudaBlock(eventCount, 256U);
         CTuint eventGrid = nutty::cuda::GetCudaGrid(eventCount, eventBlock);
-        
+
         DEVICE_SYNC_CHECK();
 
         m_hNodesContentCount.Resize(nodeCount);
         nutty::Copy(m_hNodesContentCount.Begin(), m_nodes_ContentCount.Begin(), nodeCount);
-        PRINT_BUFFER(m_hNodesContentCount);
+        
+        PRINT_BUFFER_N(m_hNodesContentCount, nodeCount);
+//         PRINT_BUFFER_N(m_nodes_ContentStartAdd, nodeCount);
+//         PRINT_BUFFER(m_activeNodes);
 
+        chimera::util::HTimer timer;
+        cudaDeviceSynchronize();
+        timer.Start();
         ComputeSAH_Splits(
             nodeCount, 
             primitiveCount, 
@@ -752,19 +746,24 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
             m_nodes_ContentCount.Begin()(),
             m_nodes_IsLeaf.Begin()() + g_nodeOffset, 
             m_nodesContent);
-
-        makeLealIfBadSplitOrLessThanMaxElements<<<nodeGrid, nodeCount>>>(
+        cudaDeviceSynchronize();
+        timer.Stop();
+        time += timer.GetMillis();
+        __ct_printf("%f (%f)\n", time, timer.GetMillis());
+        makeLeafIfBadSplitOrLessThanMaxElements<<<nodeGrid, nodeBlock>>>(
             m_nodes,
             m_nodes_IsLeaf.Begin()() + g_nodeOffset,
+            m_activeNodes.Begin()(),
             m_activeNodesIsLeaf.Begin()(), 
             m_splits,
             d == m_depth-1,
             nodeCount);
 
         CTuint b = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
-        CTuint g = nutty::cuda::GetCudaGrid(primitiveCount, eventBlock);
+        CTuint g = nutty::cuda::GetCudaGrid(primitiveCount, b);
+        nutty::ZeroMem(m_primIsLeaf);
 
-        setPrimBelongsToLeaf<<<g, b>>>(m_nodesContent, m_activeNodes.Begin()(), m_activeNodesIsLeaf.Begin()(), primitiveCount);
+        setPrimBelongsToLeaf<<<g, b>>>(m_nodesContent, m_activeNodesIsLeaf.Begin()(), primitiveCount);
 
         m_newNodesContentCount.Resize(m_nodes_ContentCount.Size());
         m_newNodesContentStartAdd.Resize(m_nodes_ContentCount.Size());
@@ -772,16 +771,17 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         m_lastNodeContentStartAdd.Resize(m_newNodesContentStartAdd.Size());
         nutty::Copy(m_lastNodeContentStartAdd.Begin(), m_nodes_ContentStartAdd.Begin(), m_nodes_ContentStartAdd.Begin() + nodeCount);
 
-        MakeLeavesResult leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), 0, nodeCount, primitiveCount, g_currentLeafCount, g_leafContentOffset);
+        MakeLeavesResult leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), g_nodeOffset, 0, nodeCount, primitiveCount, g_currentLeafCount, g_leafContentOffset, 0);
+
         CTuint lastLeaves = leavesRes.leafCount;
         CTuint lastCnt = primitiveCount;
-        primitiveCount = leavesRes.interiorPrimitiveCount;      
+        primitiveCount = leavesRes.interiorPrimitiveCount;
 
         if(leavesRes.interiorPrimitiveCount)
         {
             g_leafContentOffset += leavesRes.leafPrimitiveCount;
-            //PrintStatus("After make current Nodes Leaves");
-            classifyEdges<<<eventGrid, eventBlock>>>(m_nodes, m_events[1], m_splits, m_activeNodesIsLeaf.Begin()(), m_edgeMask.Begin()(), eventCount);
+
+            classifyEdges<<<eventGrid, eventBlock>>>(m_nodes, m_events[1], m_splits, m_activeNodesIsLeaf.Begin()(), m_edgeMask.Begin()(), m_lastNodeContentStartAdd.Begin()(), eventCount);
             DEVICE_SYNC_CHECK();
 
             nutty::ExclusivePrefixSumScan(m_edgeMask.Begin(), m_edgeMask.Begin() + eventCount, m_scannedEdgeMask.Begin(), m_edgeMaskSums.Begin());
@@ -790,21 +790,41 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
             primitiveCount = m_scannedEdgeMask[eventCount - 1] + m_edgeMask[eventCount - 1];
 
             nutty::ZeroMem(m_primIsLeaf);
-
-            //if we got leaves here we need to adjust events nodeIds
+            nutty::DeviceBuffer<CTuint> blabla(primitiveCount);
             setPrimBelongsToLeafFromEvents<<<eventGrid, eventBlock>>>(
                 m_events[1], 
                 m_nodesContent,
                 m_activeNodesIsLeaf.Begin()() + nodeCount, 
                 m_edgeMask.Begin()(),
                 m_scannedEdgeMask.Begin()(), 
-                eventCount);
+                eventCount,
+                blabla.Begin()());
+
+            if(lastLeaves)
+            {
+                setActiveNodesMask<1><<<nodeGrid, nodeBlock>>>(
+                    m_activeNodesThisLevel.Begin()(), 
+                    m_activeNodesIsLeaf.Begin()(), 
+                    m_interiorCountScanner.GetPrefixSum().Begin()(),
+                    0, 
+                    nodeCount);
+            }
+            else
+            {
+               setActiveNodesMask<0><<<nodeGrid, nodeBlock>>>(
+                    m_activeNodesThisLevel.Begin()(), 
+                    m_activeNodesIsLeaf.Begin()(), 
+                    m_interiorCountScanner.GetPrefixSum().Begin()(),
+                    0, 
+                    nodeCount);
+            }
 
             CTuint childCount = (nodeCount - leavesRes.leafCount) * 2;
             CTuint thisLevelNodesLeft = nodeCount - leavesRes.leafCount;
 
             nodeBlock = nutty::cuda::GetCudaBlock(thisLevelNodesLeft, 256U);
             nodeGrid = nutty::cuda::GetCudaGrid(thisLevelNodesLeft, nodeBlock);
+
             initThisLevelInteriorNodes<<<nodeGrid, nodeBlock>>>(
                 m_nodes,
                 m_splits,
@@ -817,19 +837,23 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 m_primIsLeafScanner.GetPrefixSum().Begin()(),
                 m_activeNodes.Begin()(),
                 m_activeNodesIsLeaf.Begin()(),
+                m_activeNodesThisLevel.Begin()(),
                 m_nodesBBox[0].Begin()(), 
                 m_nodesBBox[1].Begin()(), 
 
                 m_newNodesContentCount.Begin()(),
                 m_newNodesContentStartAdd.Begin()(),
-
+                m_newActiveNodes.Begin()(),
+                m_activeNodesIsLeaf.Begin()() + nodeCount,
                 g_childNodeOffset,
+                g_childNodeOffset2,
                 g_nodeOffset,
                 leavesRes.leafCount,
                 thisLevelNodesLeft,
                 m_lastNodeContentStartAdd.Begin()(),
                 m_depth == d+1);
 
+            nutty::Copy(m_activeNodes.Begin(), m_newActiveNodes.Begin(), m_newActiveNodes.Begin() + childCount);
             nutty::Copy(m_nodes_ContentCount.Begin(), m_newNodesContentCount.Begin(), m_newNodesContentCount.Begin() + childCount);
             nutty::Copy(m_nodes_ContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin() + childCount);
 
@@ -840,33 +864,23 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 m_leafCountScanner.GetPrefixSum().Begin()(),
                 m_edgeMask.Begin()(), 
                 m_scannedEdgeMask.Begin()(),
-                d, eventCount);
- 
-            leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), nodeCount, 2 * nodeCount, primitiveCount, g_currentLeafCount + lastLeaves, g_leafContentOffset);
+                d, eventCount, lastLeaves);
+
+            nodeBlock = nutty::cuda::GetCudaBlock(2 * nodeCount, 256U);
+            nodeGrid = nutty::cuda::GetCudaGrid(2 * nodeCount, nodeBlock);
+            setNodeToLeafIndex<2><<<nodeGrid, nodeBlock>>>(
+                m_nodes_NodeIdToLeafIndex.Begin()(),
+                m_activeNodes.Begin()(),
+                m_leafCountScanner.GetPrefixSum().Begin()(),
+                m_activeNodesIsLeaf.Begin()(),
+                g_childNodeOffset,
+                g_currentLeafCount,
+                2 * nodeCount);
+
+            leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), g_childNodeOffset, nodeCount, childCount, primitiveCount, g_currentLeafCount + lastLeaves, g_leafContentOffset, 1);
 
             primitiveCount = leavesRes.interiorPrimitiveCount;
 
-            nodeBlock = nutty::cuda::GetCudaBlock(childCount, 256U);
-            nodeGrid = nutty::cuda::GetCudaGrid(childCount, nodeBlock);
-
-            if(leavesRes.leafCount)
-            {
-                setActiveNodesMask<1><<<nodeGrid, nodeBlock>>>(
-                    m_activeNodes.Begin()(), 
-                    m_nodes_IsLeaf.Begin()(), 
-                    m_interiorCountScanner.GetPrefixSum().Begin()(), 
-                    g_childNodeOffset, 
-                    childCount);
-            }
-            else
-            {
-                setActiveNodesMask<0><<<nodeGrid, nodeBlock>>>(
-                    m_activeNodes.Begin()(), 
-                    m_nodes_IsLeaf.Begin()(), 
-                    m_interiorCountScanner.GetPrefixSum().Begin()(), 
-                    g_childNodeOffset, 
-                    childCount);
-            }
         }
         else
         {
@@ -876,16 +890,23 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 m_nodes_IsLeaf.Insert(g_nodeOffset + i, (CTbyte)1);
             }
         }
-
+        g_entries += 2 * nodeCount;
+        g_lastChildCount = 2 * nodeCount;
+        g_nodeOffset2 = g_nodeOffset;
         g_interiorNodesCountOnThisLevel = 2 * (nodeCount - lastLeaves) - leavesRes.leafCount;
+        g_currentInteriorNodesCount += g_interiorNodesCountOnThisLevel;
         g_nodeOffset = g_childNodeOffset;
-        g_childNodeOffset += 2 * nodeCount;
+        g_childNodeOffset += 2 * (nodeCount);
+
+        //ct_printf("%d %d\n", g_nodeOffset, g_childNodeOffset);
         //update globals
         g_leafContentOffset += leavesRes.leafPrimitiveCount;
-        g_currentInteriorNodesCount += g_interiorNodesCountOnThisLevel;
+        
         g_currentLeafCount += lastLeaves + leavesRes.leafCount;
-        ct_printf("g_nodeOffset=%d g_childNodeOffset=%d g_leafContentOffset=%d g_interiorNodesCountOnThisLevel=%d g_currentInteriorNodesCount=%d g_currentLeafCount=%d\n", 
-            g_nodeOffset, g_childNodeOffset, g_leafContentOffset, g_interiorNodesCountOnThisLevel, g_currentInteriorNodesCount, g_currentLeafCount);
+
+        ct_printf(
+            "g_nodeOffset=%d g_childNodeOffset=%d g_leafContentOffset=%d g_interiorNodesCountOnThisLevel=%d g_currentInteriorNodesCount=%d g_currentLeafCount=%d\nCreated '%d' Leaves, Interior Nodes '%d'\n", 
+              g_nodeOffset, g_childNodeOffset, g_leafContentOffset, g_interiorNodesCountOnThisLevel, g_currentInteriorNodesCount, g_currentLeafCount, lastLeaves + leavesRes.leafCount, g_interiorNodesCountOnThisLevel);
 
         DEVICE_SYNC_CHECK();
 
@@ -893,14 +914,17 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         {
             nutty::Copy(m_nodesBBox[0].Begin(), m_nodesBBox[1].Begin(), m_nodesBBox[1].Begin() + g_interiorNodesCountOnThisLevel);
         }
-
-        //PrintStatus("End");
+        PRINT_BUFFER(m_nodesBBox[0]);
+        
+//         PRINT_BUFFER_N(m_primNodeIndex, primitiveCount);
+//         PRINT_BUFFER_N(m_nodes_LeftChild, g_entries);
+//         PRINT_BUFFER_N(m_nodes_RightChild, g_entries);
+//         PRINT_BUFFER_N(m_nodes_IsLeaf, g_entries);
+//         PRINT_BUFFER_N(m_nodes_NodeIdToLeafIndex, g_entries);
 
         if(primitiveCount == 0 || g_interiorNodesCountOnThisLevel == 0) //all nodes are leaf nodes
         {
             primitiveCount = lastCnt;
-            ct_printf("interiorPrimCount == 0, Bailed out...\n");
-            //assert(L"0" && L"Make all nodes leaves");
             break;
         }
         
@@ -922,18 +946,17 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 GrowNodeMemory();
             }
         }
-        else
-        {
-            //assert(L"0" && L"Make all nodes leaves");
-            ct_printf("bla\n");
-        }
     }
-
-    m_nodes_NodeIdToLeafIndex.Resize(g_currentInteriorNodesCount + g_currentLeafCount);
-    nutty::ExclusivePrefixSumScan(m_nodes_IsLeaf.Begin(), m_nodes_IsLeaf.Begin() + g_currentInteriorNodesCount + g_currentLeafCount, m_nodes_NodeIdToLeafIndex.Begin(), m_edgeMaskSums.Begin());
 
     m_interiorNodesCount = g_currentInteriorNodesCount;
     m_leafNodesCount = g_currentLeafCount;
+    CTuint allNodeCount = m_interiorNodesCount + m_leafNodesCount;
+
+#ifdef _DEBUG
+    ValidateTree();
+#endif
+     //m_nodes_NodeIdToLeafIndex.Resize(allNodeCount);
+    // nutty::ExclusivePrefixSumScan(m_nodes_IsLeaf.Begin(), m_nodes_IsLeaf.Begin() + allNodeCount, m_nodes_NodeIdToLeafIndex.Begin(), m_edgeMaskSums.Begin());
 
     ct_printf("Tree Summary:\n");
     PRINT_BUFFER(m_nodes_IsLeaf);
@@ -957,4 +980,36 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     DEVICE_SYNC_CHECK();
 
     return CT_SUCCESS;
+}
+
+void cuKDTreeBitonicSearch::ValidateTree(void)
+{
+    std::queue<CTuint> queue;
+
+    queue.push(0);
+
+    while(!queue.empty())
+    {
+        CTuint node = queue.front();
+        queue.pop();
+        ct_printf("%d ", node);
+        if(!m_nodes_IsLeaf[node])
+        {
+            ct_printf("\n");
+             //assertions are happening here if we are out of bounds
+            CTuint left = m_nodes_LeftChild[node];
+            CTuint right = m_nodes_RightChild[node];
+            if(left < node || right < node)
+            {
+                assert(0 && "fuck");
+            }
+            queue.push(left);
+            queue.push(right);
+        }
+        else
+        {
+            CTuint leafIndex = m_nodes_NodeIdToLeafIndex[node];
+            ct_printf(" - %d\n", leafIndex);
+        }
+    }
 }

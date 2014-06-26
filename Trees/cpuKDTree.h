@@ -5,7 +5,6 @@
 #include "tree.h"
 #include <map>
 #include <assert.h>
-#include "shared_types.h"
 
 class cpuKDTree;
 

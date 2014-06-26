@@ -20,8 +20,6 @@ std::ostream& operator<<(std::ostream &out, const AABB& t);
 
 std::ostream& operator<<(std::ostream &out, const CTbyte& t);
 
-std::ostream& operator<<(std::ostream &out, const CTbyte& t);
-
 #define PRINT_BUFFER(_name) \
     OutputDebugStringA(#_name);\
     OutputDebugStringA(":  ");\

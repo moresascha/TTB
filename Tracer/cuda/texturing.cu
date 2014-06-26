@@ -104,6 +104,24 @@ extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size)
                  g_tex5.addressMode[2] = cudaAddressModeWrap;
                  CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex5, textures[5].array, channelDesc));
              } break;
+         case 6:
+             {
+                 g_tex5.normalized = true;
+                 g_tex5.filterMode = cudaFilterModeLinear;
+                 g_tex5.addressMode[0] = cudaAddressModeWrap;
+                 g_tex5.addressMode[1] = cudaAddressModeWrap;
+                 g_tex5.addressMode[2] = cudaAddressModeWrap;
+                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex5, textures[5].array, channelDesc));
+             } break;
+         case 7:
+             {
+                 g_tex5.normalized = true;
+                 g_tex5.filterMode = cudaFilterModeLinear;
+                 g_tex5.addressMode[0] = cudaAddressModeWrap;
+                 g_tex5.addressMode[1] = cudaAddressModeWrap;
+                 g_tex5.addressMode[2] = cudaAddressModeWrap;
+                 CUDA_RT_SAFE_CALLING_NO_SYNC(cudaBindTextureToArray(g_tex7, textures[7].array, channelDesc));
+             } break;
          }
      }
 #endif

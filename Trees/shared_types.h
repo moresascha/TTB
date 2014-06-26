@@ -1,9 +1,9 @@
 #pragma once
 #include "ct.h"
 
-#define MAX_ELEMENTS_PER_LEAF 32
+#define MAX_ELEMENTS_PER_LEAF 6
 #define INVALID_SAH FLT_MAX
-#define IS_INVALD_SAH(sah) (!(sah < FLT_MAX))
+#define IS_INVALD_SAH(sah) (sah == FLT_MAX)
 
 __forceinline CTuint GenerateDepth(CTuint N)
 {

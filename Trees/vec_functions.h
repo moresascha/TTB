@@ -2,6 +2,30 @@
 #include "ct.h"
 #include "shared_types.h"
 
+template<typename BBox>
+__inline void __device__ __host__ splitAABB(const BBox* aabb, CTreal split, CTbyte axis, BBox* l, BBox* r)
+{
+    l->m_max = aabb->m_max;
+    l->m_min = aabb->m_min;
+    r->m_max = aabb->m_max;
+    r->m_min = aabb->m_min;
+    switch(axis)
+    {
+    case 0:
+        {
+            l->m_max.x = split; r->m_min.x = split; 
+        } break;
+    case 1:
+        {
+            l->m_max.y = split; r->m_min.y = split; 
+        } break;
+    case 2:
+        {
+            l->m_max.z = split; r->m_min.z = split; 
+        } break;
+    }
+}
+
 __forceinline __device__ __host__ int getLongestAxis(const CTreal3& mini, const CTreal3& maxi) 
 {
     CTreal3 v = maxi - mini;

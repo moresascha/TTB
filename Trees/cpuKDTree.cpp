@@ -8,6 +8,7 @@
 #include <Copy.h>
 #include <DeviceBuffer.h>
 #include "shared_kernel.h"
+#include "shared_types.h"
 #include "vec_functions.h"
 #include "buffer_print.h"
 
@@ -159,16 +160,16 @@ void cpuKDTree::_CreateTree(void)
         AABB& parentAABB = m_linearNodeAABBs[parent->aabb];
 
         CT_SPLIT_AXIS axis = getLongestAxis(parentAABB.GetMax() - parentAABB.GetMin());
-//         ct_printf("%d [%f %f %f|%f %f %f]\n", axis, 
-//             parentAABB.GetMin().x, parentAABB.GetMin().y, parentAABB.GetMin().z, 
-//             parentAABB.GetMax().x, parentAABB.GetMax().y, parentAABB.GetMax().z);
+        ct_printf("%d [%f %f %f|%f %f %f]  ", axis, 
+            parentAABB.GetMin().x, parentAABB.GetMin().y, parentAABB.GetMin().z, 
+            parentAABB.GetMax().x, parentAABB.GetMax().y, parentAABB.GetMax().z);
         m_events.clear();
         for(CTuint i = 0; i < parent->GetPrimitiveCount(); ++i)
         {
             _AABB& aabb = m_linearPrimAABBs[parent->GetPrimitive(i)];
 
-            float start = getAxis(aabb._min, axis);
-            float end = getAxis(aabb._max, axis);
+            float start = getAxis(aabb.m_min, axis);
+            float end = getAxis(aabb.m_max, axis);
 
             EdgeEvent startEvent;
             startEvent.split = start;
@@ -215,8 +216,8 @@ void cpuKDTree::_CreateTree(void)
             }
         }
         //if(IS_INVALD_SAH(currentBestSAH))
-        ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f\n\n\n ---------------------- \n\n\n", currentBestSAH, axis, sbelow, sabove, currentSplit);
-        if(currentBestSAH == FLT_MAX)
+        ct_printf("Found best: sah=%f, axis=%d, %d - %d split=%f %d %d\n", currentBestSAH, axis, sbelow, sabove, currentSplit, parent->depth, parent->GetPrimitiveCount());
+        if(IS_INVALD_SAH(currentBestSAH))
         {
             parent->SetLeaf(true);
             parent->SetLeafIndex(m_leafNodesCount);
@@ -289,8 +290,8 @@ void cpuKDTree::_CreateTree(void)
         {
             _AABB& aabb = m_linearPrimAABBs[parent->GetPrimitive(i)];
 
-            float mini = getAxis(aabb._min, axis);
-            float maxi = getAxis(aabb._max, axis);
+            float mini = getAxis(aabb.m_min, axis);
+            float maxi = getAxis(aabb.m_max, axis);
 
             if(mini < currentSplit)
             {

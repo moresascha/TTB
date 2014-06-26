@@ -9,13 +9,13 @@ std::ostream& operator<<(std::ostream &out, const IndexedSAHSplit& t)
 
 std::ostream& operator<<(std::ostream &out, const IndexedEvent& t)
 {
-    out << "[Split=" << t.v /*"[" << t.v*/ << ", " << t.index << "]";
+    out << "[Split=" << t.v /*"[" << t.v*/ << ", " << (CTuint)t.index << "]";
     return out;
 }
 
 std::ostream& operator<<(std::ostream &out, const BBox& t)
 {
-    out << "[" << t._min.x << "," << t._min.y << "," << t._min.z << "|" << t._max.x << "," << t._max.y << "," << t._max.z << "]";
+    out << "[" << t.GetMin().x << "," << t.GetMin().y << "," << t.GetMin().z << "|" << t.GetMax().x << "," << t.GetMax().y << "," << t.GetMax().z << "]";
     return out;
 }
 
@@ -27,6 +27,12 @@ std::ostream& operator<<(std::ostream &out, const AABB& t)
 
 std::ostream& operator<<(std::ostream &out, const CTbyte& t)
 {
-    out << (CTuint)t;
+    out << (CTint)t;
+    return out;
+}
+
+std::ostream& operator<<(std::ostream &out, const CTuint& t)
+{
+    out << (CTint)t;
     return out;
 }

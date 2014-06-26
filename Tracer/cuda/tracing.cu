@@ -486,7 +486,7 @@ __global__ void _traceRays(
         if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
         {
             r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
-            r.rayWeight = .95;
+            r.rayWeight = 0.5f;
             addRay(newShadowRays, rayIndex, r);
         }
 #endif

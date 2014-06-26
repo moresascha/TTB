@@ -57,7 +57,16 @@ int cuTextureAtlas::AddTexture(uchar4* data, unsigned int width, unsigned int he
 
 int cuTextureAtlas::AddTexture(const char* file)
 {
-    TextureData texData = GetTextureJPGData(file);
+    std::string _file = file;
+    TextureData texData;
+    if(_file.find(".jpg") != std::string::npos)
+    {
+       texData = GetTextureJPGData(file);
+    }
+    else
+    {
+       texData = GetTexturePNGData(file);
+    }
 
     int slot = AddTexture(texData.data, texData.width, texData.height);
 

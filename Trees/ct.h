@@ -179,12 +179,6 @@ CT_EXPORT CT_RESULT CT_API CTGetInteriorNodeCount
     CTuint* count
     );
 
-CT_EXPORT CT_RESULT CT_API CTGetRootNode
-    (
-    const ICTTree* tree,
-    ICTTreeNode** node
-    );
-
 CT_EXPORT CT_RESULT CT_API CTTraverse
     (
     ICTTree* tree,
