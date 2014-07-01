@@ -1,7 +1,7 @@
 #pragma once
 #include "ct.h"
 
-#define MAX_ELEMENTS_PER_LEAF 6
+#define MAX_ELEMENTS_PER_LEAF 16
 #define INVALID_SAH FLT_MAX
 #define IS_INVALD_SAH(sah) (sah == FLT_MAX)
 

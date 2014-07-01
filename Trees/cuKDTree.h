@@ -6,6 +6,7 @@
 #include <DeviceBuffer.h>
 #include <Copy.h>
 #include <Scan.h>
+#include <cuda/Stream.h>
 #include <cuda/cuda_helper.h>
 #include "memory.h"
 #include "device_heap.h"
@@ -52,9 +53,26 @@ public:
         return m_buffer[m_current];
     }
 
+    nutty::Iterator<T, nutty::base::Base_Buffer<T, nutty::DeviceContent<T>, nutty::CudaAllocator<T>>
+    > Begin(CTbyte index)
+    {
+        return m_buffer[index].Begin();
+    }
+
+    nutty::Iterator<T, nutty::base::Base_Buffer<T, nutty::DeviceContent<T>, nutty::CudaAllocator<T>>
+    > End(CTbyte index)
+    {
+        return m_buffer[index].End();
+    }
+
     void Toggle(void)
     {
         m_current = (m_current + 1) % 2;
+    }
+
+    size_t Size(void)
+    {
+        return m_buffer[0].Size();
     }
 
     void ZeroMem(void)
@@ -63,21 +81,6 @@ public:
         nutty::ZeroMem(m_buffer[1]);
     }
 };
-
-__forceinline __device__ __host__ uint elemsBeforeLevel(byte l)
-{
-    return (1 << l) - 1;
-}
-
-__forceinline __device__ __host__ CTuint elemsOnLevel(byte l)
-{
-    return (1 << l);
-}
-
-__forceinline __device__ __host__ CTuint elemsBeforeNextLevel(byte l)
-{
-    return elemsBeforeLevel(l + 1);
-}
 
 struct NodeContent
 {
@@ -173,7 +176,6 @@ protected:
 
     nutty::DeviceBuffer<BBox> m_primAABBs;
     nutty::DeviceBuffer<BBox> m_tPrimAABBs;
-    nutty::DeviceBuffer<BBox> m_linearPrimAABBs; //for debugging
 
     Node m_nodes;
     nutty::DeviceBuffer<CTbyte> m_nodes_IsLeaf;
@@ -409,6 +411,7 @@ private:
     nutty::DeviceBuffer<CTuint> m_newNodesContentCount;
     nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
 
+    nutty::cuStreamPool m_pool;
 public:
     cuKDTreeBitonicSearch(void)
     {
@@ -442,4 +445,274 @@ public:
     }
 
     add_uuid_header(cudpKDTree);
+};
+
+struct PlaneEvents
+{
+    nutty::DeviceBuffer<CTreal> x;
+    nutty::DeviceBuffer<CTreal> y;
+    nutty::DeviceBuffer<CTreal> z;
+
+    nutty::DeviceBuffer<CTreal2> dx;
+
+    void Resize(CTuint size)
+    {
+        x.Resize(size);
+        y.Resize(size);
+        z.Resize(size);
+        x.Resize(size);
+        x.Resize(size);
+    }
+};
+
+struct cuEventLine
+{
+    IndexedEvent* indexedEvent;
+    CTbyte* type;
+    CTuint* nodeIndex;
+    CTuint* prefixSum;
+    CTuint* primId;
+    BBox* ranges;
+
+    const CTuint* __restrict scannedEventTypeStartMask;
+    const CTuint* __restrict scannedEventTypeEndMask;
+    const CTuint* __restrict eventTypeMaskSumsStart;
+    const CTuint* __restrict eventTypeMaskSumsEnd;
+};
+
+struct EventLine
+{
+    DoubleBuffer<IndexedEvent> indexedEvent;
+    DoubleBuffer<CTbyte> type;
+    DoubleBuffer<CTuint> nodeIndex;
+    DoubleBuffer<CTuint> prefixSum;
+    DoubleBuffer<CTuint> primId;
+    DoubleBuffer<BBox> ranges;
+
+    nutty::DeviceBuffer<CTuint> scannedEventTypeStartMask;
+    nutty::DeviceBuffer<CTuint> scannedEventTypeEndMask;
+    nutty::DeviceBuffer<CTuint> eventTypeMaskSumsStart;
+    nutty::DeviceBuffer<CTuint> eventTypeMaskSumsEnd;
+
+    nutty::DeviceBuffer<CTuint> mask;
+    nutty::DeviceBuffer<CTuint> scannedMasks;
+    nutty::DeviceBuffer<CTuint> maskSums;
+
+    CTbyte toggleIndex;
+    CTuint eventCount;
+
+    EventLine(void) : toggleIndex(0)
+    {
+
+    }
+
+    CTuint GetEventCount(void)
+    {
+        return eventCount;
+    }
+
+    void Resize(CTuint size)
+    {
+        if(indexedEvent.Size() >= size)
+        {
+            return;
+        }
+        
+        mask.Resize(size);
+        scannedMasks.Resize(size);
+        maskSums.Resize(size);
+
+        indexedEvent.Resize(size);
+        type.Resize(size);
+        nodeIndex.Resize(size);
+        prefixSum.Resize(size);
+        primId.Resize(size);
+        ranges.Resize(size);
+
+        scannedEventTypeStartMask.Resize(size);
+        scannedEventTypeEndMask.Resize(size);
+        eventTypeMaskSumsStart.Resize(size);
+        eventTypeMaskSumsEnd.Resize(size);
+    }
+
+    size_t Size(void)
+    {
+        return indexedEvent.Size();
+    }
+
+    cuEventLine GetPtr(CTbyte index)
+    {
+        cuEventLine events;
+        events.indexedEvent = indexedEvent.Begin(index)();
+        events.type = type.Begin(index)();
+        events.nodeIndex = nodeIndex.Begin(index)();
+        events.prefixSum = prefixSum.Begin(index)();
+        events.primId = primId.Begin(index)();
+        events.ranges = ranges.Begin(index)();
+
+        events.scannedEventTypeStartMask = scannedEventTypeStartMask.Begin()();
+        events.scannedEventTypeEndMask = scannedEventTypeEndMask.Begin()();
+        events.eventTypeMaskSumsStart = eventTypeMaskSumsStart.Begin()();
+        events.eventTypeMaskSumsEnd = eventTypeMaskSumsEnd.Begin()();
+
+        return events;
+    }
+
+    void ZeroMem(CTuint offset)
+    {
+//         for(CTbyte i = 0; i < 2; ++i)
+//         {
+//             CTuint length = indexedEvent[i].Size() - offset;
+//             nutty::ZeroMem(indexedEvent[i].Begin() + offset, indexedEvent[i].Begin() + length);
+//             nutty::ZeroMem(type[i]);
+//             nutty::ZeroMem(nodeIndex[i]);
+//             nutty::ZeroMem(prefixSum[i]);
+//             nutty::ZeroMem(primId[i]);
+//         }
+    }
+
+    void ScanEventTypes(void);
+
+    void ScanEvents(CTuint length);
+
+    void CompactClippedEvents(CTuint length);
+
+    void Toogle(void)
+    {
+        toggleIndex ^= 1;
+    }
+
+    cuEventLine GetSrc(void)
+    {
+        return GetPtr(toggleIndex);
+    }
+
+    cuEventLine GetDst(void)
+    {
+        return GetPtr((toggleIndex+1)%2);
+    }
+};
+
+typedef struct cuEventLineTriple
+{
+    cuEventLine lines[3];
+
+    __device__ cuEventLineTriple(void)
+    {
+
+    }
+
+    __host__ cuEventLineTriple(EventLine line[3])
+    {
+        lines[0] = line[0].GetDst();
+        lines[1] = line[1].GetDst();
+        lines[2] = line[2].GetDst();
+    }
+
+    __host__ cuEventLineTriple(EventLine line[3], CTbyte index)
+    {
+        lines[0] = line[0].GetPtr(index);
+        lines[1] = line[1].GetPtr(index);
+        lines[2] = line[2].GetPtr(index);
+    }
+
+    __device__ cuEventLine& getLine(CTbyte index)
+    {
+        return lines[index];
+    }
+
+} cuEventLineTriple;
+
+class cuKDTreeScan : public cuKDTree
+{
+private:
+    void ClearBuffer(void);
+    void GrowPrimitiveEventMemory(void);
+    void GrowNodeMemory(void);
+    void GrowPerLevelNodeMemory(CTuint newSize);
+    void InitBuffer(void);
+
+    void PrintStatus(const char* msg = NULL);
+
+    void ValidateTree(void);
+
+    void ComputeSAH_Splits(
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        const CTuint* hNodesContentCount, 
+        const CTuint* nodesContentCount);
+
+    CTuint CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint range);
+
+    MakeLeavesResult MakeLeaves(
+        nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
+        CTuint g_nodeOffset, 
+        CTuint nodeOffset, 
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        CTuint currentLeafCount, 
+        CTuint leafContentOffset,
+        CTuint initNodeToLeafIndex);
+
+    nutty::DeviceBuffer<CTuint> m_eventMask;
+    nutty::DeviceBuffer<CTuint> m_scannedeventMask;
+    nutty::DeviceBuffer<CTuint> m_eventMaskSums;
+
+    nutty::HostBuffer<CTuint> m_hNodesContentCount;
+
+    Split m_splits;
+    nutty::DeviceBuffer<IndexedSAHSplit> m_splits_IndexedSplit;
+    nutty::DeviceBuffer<CTreal> m_splits_Plane;
+    nutty::DeviceBuffer<CTbyte> m_splits_Axis;
+    nutty::DeviceBuffer<CTuint> m_splits_Above;
+    nutty::DeviceBuffer<CTuint> m_splits_Below;
+
+    EventLine m_events3[3];
+
+    NodeContent m_nodesContent;
+    nutty::DeviceBuffer<CTuint> m_primIndex;
+    nutty::DeviceBuffer<CTuint> m_primNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_primPrefixSum;
+    nutty::DeviceBuffer<CTbyte> m_primIsLeaf;
+
+    Scanner m_primIsLeafScanner;
+    Scanner m_primIsNoLeafScanner;
+    Scanner m_leafCountScanner;
+    Scanner m_interiorCountScanner;
+    Scanner m_interiorContentScanner;
+    Scanner m_leafContentScanner;
+
+    nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_maskedleafContent;
+
+    nutty::DeviceBuffer<CTuint> m_lastNodeContentStartAdd;
+
+    nutty::DeviceBuffer<CTuint> m_activeNodesThisLevel;
+    nutty::DeviceBuffer<CTuint> m_activeNodes;
+    nutty::DeviceBuffer<CTuint> m_newActiveNodes;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeaf;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeafCompacted;
+
+    DoubleBuffer<BBox> m_nodesBBox;
+
+    nutty::DeviceBuffer<CTuint> m_newInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_newPrimNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_newPrimPrefixSum;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentCount;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
+
+    nutty::cuStreamPool m_pool;
+public:
+    cuKDTreeScan(void)
+    {
+    }
+
+    CT_RESULT Update(void);
+
+    ~cuKDTreeScan(void)
+    {
+
+    }
+
+    add_uuid_header(cuKDTreeScan);
 };

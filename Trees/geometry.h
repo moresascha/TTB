@@ -250,6 +250,13 @@ struct _AABB
     {
         return m_max;
     }
+
+    __device__ __host__ _AABB& operator=(const _AABB& cpy)
+    {
+        m_max = cpy.m_max;
+        m_min = cpy.m_min;
+        return *this;
+    }
 };
 
 typedef _AABB BBox;

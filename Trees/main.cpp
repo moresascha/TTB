@@ -47,8 +47,6 @@ int main(void)
     CT_SAFE_CALL(CTAddGeometry(tree, geo, &handle));
     CTTransformGeometryHandle(tree, handle, NULL);
     CT_SAFE_CALL(CTReleaseGeometry(geo));
-    
-    ICTTreeNode* node;
 
     CT_SAFE_CALL(CTUpdate(tree));
 

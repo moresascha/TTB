@@ -71,7 +71,7 @@ CT_RESULT CT_API CTCreateTree(ICTTree** tree, CT_TREE_DESC* desc)
                     }
                     else if(desc->flags & CT_CREATE_TREE_GPU)
                     {
-                        _tree = CTMemAllocObject<cuKDTreeBitonicSearch>();
+                        _tree = CTMemAllocObject<cuKDTreeScan>();
                     }
                     else if(desc->flags & CT_CREATE_TREE_GPU_DP)
                     {

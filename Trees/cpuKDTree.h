@@ -219,6 +219,13 @@ struct EdgeEvent
     }
 };
 
+struct SAHResult
+{
+    CTreal sah;
+    CTreal split;
+    CT_SPLIT_AXIS axis;
+};
+
 class cpuKDTree : public ICTTree
 {
     friend struct cpuTreeNode;
@@ -265,6 +272,8 @@ private:
     void _CreateTree(void);
 
     void _DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const;
+
+    SAHResult ComputeSAH(const AABB& aabb, cpuTreeNode* node);
 
 protected:
     CTuint GetPrimitive(CTuint index);

@@ -3,9 +3,9 @@
 #define NUTTY_DEBUG
 #endif
 
-#include <chimera/Timer.h>
 #include "cuKDTree.h"
 #include "kd_kernel.h"
+#include "kd_scan_kernel.h"
 #include "shared_kernel.h"
 #include "shared_types.h"
 #include <Reduce.h>
@@ -17,44 +17,27 @@
 #include <Functions.h>
 #include <cuda/Globals.cuh>
 #include "buffer_print.h"
+#include <chimera/Timer.h>
 
-#undef PRINT_OUT
+#define PRINT_OUT
 #ifndef _DEBUG
 #undef PRINT_OUT
 #endif
 
 #ifndef PRINT_OUT
 #undef PRINT_BUFFER(_name)
-#undef PRINT_BUFFER_N(_name)
+#undef PRINT_BUFFER_N(_name, _tmp)
 #undef ct_printf
 
 #define PRINT_BUFFER(_name)
-#define PRINT_BUFFER_N(_name)
+#define PRINT_BUFFER_N(_name, _tmp)
 #define ct_printf(...)
 #endif
 
-struct ShrinkContentStartAdd
-{
-    CTuint leafCount;
-    __device__ __host__ ShrinkContentStartAdd(CTuint lc) : leafCount(lc)
-    {
-
-    }
-
-    __device__ __host__ ShrinkContentStartAdd(const ShrinkContentStartAdd& s) : leafCount(s.leafCount)
-    {
-
-    }
-
-    __device__ CTuint operator()(CTuint elem)
-    {
-        if(elem < leafCount)
-        {
-            return elem;
-        }
-        return elem - leafCount;
-    }
-};
+#define PREPARE_KERNEL(kernel_name, N) \
+    { \
+    CTuint block = nutty::cuda::GetCudaBlock(N, 256U); \
+    CTuint grid = nutty::cuda::GetCudaGrid(N, block); \
 
 template<>
 struct ShrdMemory<IndexedSAHSplit>
@@ -198,7 +181,7 @@ struct EventEndScanOp
     }
 };
 
-void cuKDTreeBitonicSearch::InitBuffer(void)
+void cuKDTreeScan::InitBuffer(void)
 {
     CTuint primitiveCount = m_orginalVertices.Size() / 3;
 
@@ -213,12 +196,8 @@ void cuKDTreeBitonicSearch::InitBuffer(void)
     ClearBuffer();
 }
 
-void cuKDTreeBitonicSearch::ClearBuffer(void)
+void cuKDTreeScan::ClearBuffer(void)
 {
-    nutty::ZeroMem(m_edgeMask);
-    nutty::ZeroMem(m_scannedEdgeMask);
-    nutty::ZeroMem(m_edgeMaskSums);
-
     nutty::ZeroMem(m_nodesBBox[0]);
     nutty::ZeroMem(m_nodesBBox[1]);
 
@@ -237,14 +216,9 @@ void cuKDTreeBitonicSearch::ClearBuffer(void)
 
     nutty::ZeroMem(m_leafNodesContentCount);
     nutty::ZeroMem(m_leafNodesContentStart);
-
-    m_events_NodeIndex.ZeroMem();
-    m_events_PrimId.ZeroMem();
-    m_events_Type.ZeroMem();
-    m_events_PrefixSum.ZeroMem();
 }
 
-void cuKDTreeBitonicSearch::GrowPerLevelNodeMemory(CTuint newSize)
+void cuKDTreeScan::GrowPerLevelNodeMemory(CTuint newSize)
 {
     m_activeNodesIsLeaf.Resize(newSize);
     m_activeNodes.Resize(newSize);
@@ -264,7 +238,7 @@ void cuKDTreeBitonicSearch::GrowPerLevelNodeMemory(CTuint newSize)
     m_nodes.nodeToLeafIndex = m_nodes_NodeIdToLeafIndex.GetDevicePtr()();
 }
 
-void cuKDTreeBitonicSearch::GrowNodeMemory(void)
+void cuKDTreeScan::GrowNodeMemory(void)
 {
     size_t newSize = m_nodes_IsLeaf.Size() ? m_nodes_IsLeaf.Size() * 4 : 32;
 
@@ -285,7 +259,7 @@ void cuKDTreeBitonicSearch::GrowNodeMemory(void)
     m_nodes.nodeToLeafIndex = m_nodes_NodeIdToLeafIndex.GetDevicePtr()();
 }
 
-void cuKDTreeBitonicSearch::GrowPrimitiveEventMemory(void)
+void cuKDTreeScan::GrowPrimitiveEventMemory(void)
 {
     CTuint primitiveCount = m_orginalVertices.Size() / 3;
     CTuint eventCount = m_primIndex.Size() ? m_primIndex.Size() * 2 : 4 * primitiveCount; //4 times as big
@@ -310,31 +284,9 @@ void cuKDTreeBitonicSearch::GrowPrimitiveEventMemory(void)
     m_splits.axis = m_splits_Axis.GetDevicePtr()();
     m_splits.indexedSplit = m_splits_IndexedSplit.GetDevicePtr()();
     m_splits.v = m_splits_Plane.GetDevicePtr()();
-
-    m_events_IndexedEdge.Resize(eventCount);
-    m_events_NodeIndex.Resize(eventCount);
-    m_events_PrimId.Resize(eventCount);
-    m_events_Type.Resize(eventCount);
-    m_events_PrefixSum.Resize(eventCount);
-
-    m_events[0].indexedEdge = m_events_IndexedEdge.GetDevicePtr()();
-    m_events[0].nodeIndex = m_events_NodeIndex.Get(0).GetDevicePtr()();
-    m_events[0].primId = m_events_PrimId.Get(0).GetDevicePtr()();
-    m_events[0].type = m_events_Type.Get(0).GetDevicePtr()();
-    m_events[0].prefixSum = m_events_PrefixSum.Get(0).GetDevicePtr()();
-
-    m_events[1].indexedEdge = m_events_IndexedEdge.GetDevicePtr()();
-    m_events[1].nodeIndex = m_events_NodeIndex.Get(1).GetDevicePtr()();
-    m_events[1].primId = m_events_PrimId.Get(1).GetDevicePtr()();
-    m_events[1].type = m_events_Type.Get(1).GetDevicePtr()();
-    m_events[1].prefixSum = m_events_PrefixSum.Get(1).GetDevicePtr()();
-
-    m_edgeMask.Resize(eventCount);
-    m_scannedEdgeMask.Resize(eventCount);
-    m_edgeMaskSums.Resize(eventCount); //way to big but /care
 }
 
-void cuKDTreeBitonicSearch::PrintStatus(const char* msg /* = NULL */)
+void cuKDTreeScan::PrintStatus(const char* msg /* = NULL */)
 {
     ct_printf("PrintStatus: %s\n", msg == NULL ? "" : msg);
     //PRINT_BUFFER(m_activeNodes);
@@ -352,38 +304,33 @@ void cuKDTreeBitonicSearch::PrintStatus(const char* msg /* = NULL */)
     //PRINT_BUFFER(m_leafNodesContentStart);
 }
 
-void cuKDTreeBitonicSearch::ComputeSAH_Splits(
+void cuKDTreeScan::ComputeSAH_Splits(
     CTuint nodeCount,
     CTuint primitiveCount, 
     const CTuint* hNodesContentCount, 
-    const CTuint* nodesContentCount, 
-    const CTbyte* isLeaf,
-    NodeContent nodesContent)
+    const CTuint* nodesContentCount)
 {
     CTuint elementBlock = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
     CTuint elementGrid = nutty::cuda::GetCudaGrid(primitiveCount, elementBlock);
-
-    //nutty::ZeroMem(m_events_NodeIndex[0]);
-
-    CTuint nodeBlock = nutty::cuda::GetCudaBlock(nodeCount, 256U);
-    CTuint nodeGrid = nutty::cuda::GetCudaGrid(nodeCount, nodeBlock);
 
     CTuint eventCount = 2 * primitiveCount;
     CTuint eventBlock = nutty::cuda::GetCudaBlock(eventCount, 256U);
     CTuint eventGrid = nutty::cuda::GetCudaGrid(eventCount, eventBlock);
 
-    Event eventsSrc = m_events[0];
+    CTuint start = 0;
+
+    m_pool.Reset();
+     
+    chimera::util::HTimer timer;
+    cudaDeviceSynchronize();
+    timer.Start();
+
+    /*Event eventsSrc = m_events[0];
     Event eventsDst = m_events[1];
 
     createEvents<<<elementGrid, elementBlock>>>(eventsSrc, m_primAABBs.Begin()(), m_nodesBBox[0].Begin()(), nodesContent, primitiveCount);
 
     DEVICE_SYNC_CHECK();
-    m_pool.Reset();
-    CTuint start = 0;
-   
-    chimera::util::HTimer timer;
-    cudaDeviceSynchronize();
-    timer.Start();
 
     for(int i = 0; i < nodeCount; ++i)
     {
@@ -420,40 +367,50 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
 
     DEVICE_SYNC_CHECK();
 
-    reorderEvents<<<eventGrid, eventBlock>>>(eventsDst, eventsSrc, eventCount);
+    reorderEvents<<<eventGrid, eventBlock>>>(eventsDst, eventsSrc, eventCount);*/
 
-    m_scannedEventTypeStartMask.Resize(m_events_Type[1].Size());
-    m_eventTypeMaskSums.Resize(m_events_Type[1].Size());
-    m_scannedEventTypeEndMask.Resize(m_events_Type[1].Size());
+//     m_scannedEventTypeStartMask.Resize(eventCount);
+//     m_eventTypeMaskSumsStart.Resize(eventCount);
+// 
+//     m_scannedEventTypeEndMask.Resize(eventCount);
+//     m_eventTypeMaskSumsEnd.Resize(eventCount);
+// 
+//     nutty::DevicePtr<CTbyte> typeBegin = nutty::DevicePtr_Cast<CTbyte>(m_events3.GetDst().type);
+//     nutty::DevicePtr<CTbyte> typeEnd = nutty::DevicePtr_Cast<CTbyte>(m_events3.GetDst().type + eventCount);
+// 
+//     EventStartScanOp<CTbyte> op0;
+//     nutty::ExclusiveScan(typeBegin, typeBegin, m_scannedEventTypeStartMask.Begin(), m_eventTypeMaskSumsStart.Begin(), op0);
+// 
+//     EventEndScanOp<CTbyte> op1;
+//     nutty::ExclusiveScan(typeBegin, typeEnd, m_scannedEventTypeEndMask.Begin(), m_eventTypeMaskSumsEnd.Begin(), op1);
 
-    EventStartScanOp<CTbyte> op0;
-    nutty::ExclusiveScan(m_events_Type[1].Begin(), m_events_Type[1].Begin() + eventCount, m_scannedEventTypeStartMask.Begin(), m_eventTypeMaskSums.Begin(), op0);
+    for(CTbyte i = 0; i < 3; ++i)
+    {
+        m_events3[i].ScanEventTypes();
+    }
 
-    nutty::ZeroMem(m_eventTypeMaskSums);
-    nutty::ZeroMem(m_scannedEventTypeEndMask);
+    cuEventLineTriple tripleLine(m_events3);
 
-    EventEndScanOp<CTbyte> op1;
-    nutty::ExclusiveScan(m_events_Type[1].Begin(), m_events_Type[1].Begin() + eventCount, m_scannedEventTypeEndMask.Begin(), m_eventTypeMaskSums.Begin(), op1);
-        
     DEVICE_SYNC_CHECK();
-    static CTuint bla = 0;
-    computeSAHSplits<<<eventGrid, eventBlock>>>(
-        eventsDst,
+
+    PRINT_BUFFER(m_nodesBBox[0]);
+
+    computeSAHSplits3<1><<<eventGrid, eventBlock>>>(
+        tripleLine,
         nodesContentCount,
         m_splits,
         m_nodesBBox[0].Begin()(),
-        m_nodesContent, 
-        m_scannedEventTypeStartMask.Begin()(), 
-        m_scannedEventTypeEndMask.Begin()(),
-        eventCount,
-        bla);
-    bla++;
+        eventCount);
     
-#if 0
-    for(int i = 0; i < eventCount && bla == 8; ++i)
+#if 1
+    for(int i = 0; i < eventCount; ++i)
     {
-        ct_printf("%d [%d %d] id=%d Split=%.4f SAH=%.4f %d\n", i, m_splits_Below[i], m_splits_Above[i], 
-            m_events_IndexedEdge[i].index, m_events_IndexedEdge[i].v, m_splits_IndexedSplit[i].sah, m_scannedEventTypeEndMask[i]);
+            ct_printf("%d [%d %d] id=%d Axis=%d, Plane=%.4f SAH=%.4f\n", 
+                i, m_splits_Below[i], m_splits_Above[i],
+                m_splits_IndexedSplit[i].index, 
+                (CTuint)m_splits_Axis[i],
+                m_splits_Plane[i], 
+                m_splits_IndexedSplit[i].sah);
     }
 #endif
 
@@ -493,7 +450,7 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
         CTbyte axis = m_splits_Axis[s.index];
         CTuint below = m_splits_Below[s.index];
         CTuint above = m_splits_Above[s.index];
-        ct_printf("SPLIT= %d %f %f %d-%d\n", (CTuint)axis, plane, s.sah, below, above);
+        ct_printf("axis=%d plane=%f sah=%f below=%d above=%d\n", (CTuint)axis, plane, s.sah, below, above);
 
 //         for(int i = start; i < start + length && IS_INVALD_SAH(s.sah); ++i)
 //         {
@@ -509,7 +466,7 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
     }
     cudaDeviceSynchronize();
     timer.Stop();
-    __ct_printf("|%f ", timer.GetMillis());
+    //__ct_printf("|%f ", timer.GetMillis());
     for(CTuint i = 0; i < min(m_pool.GetStreamCount(), nodeCount); ++i)
     {
         nutty::cuStream& stream = m_pool.GetStream(i);
@@ -520,7 +477,7 @@ void cuKDTreeBitonicSearch::ComputeSAH_Splits(
     nutty::SetDefaultStream();
 }
 
-CTuint cuKDTreeBitonicSearch::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint nodeRange)
+CTuint cuKDTreeScan::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint nodeRange)
 {
     m_leafCountScanner.Resize(nodeRange);
     m_leafCountScanner.ExcScan(isLeafBegin + nodeOffset, isLeafBegin + nodeOffset + nodeRange, TypeOp<CTbyte>());
@@ -532,7 +489,6 @@ CTuint cuKDTreeBitonicSearch::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceB
         return 0;
     }
 
-    //not needed m_leafCountScanner - id should do it, anyway not the problem atm
     m_interiorCountScanner.Resize(nodeRange);
     m_interiorCountScanner.ExcScan(isLeafBegin + nodeOffset, isLeafBegin + nodeOffset + nodeRange, InvTypeOp<CTbyte>());
 
@@ -556,7 +512,7 @@ CTuint cuKDTreeBitonicSearch::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceB
     return leafCount;
 }
 
-MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
+MakeLeavesResult cuKDTreeScan::MakeLeaves(
     nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, 
     /*nutty::DeviceBuffer<CTbyte>::iterator& isNodeLeafFinalBegin, */
     CTuint g_nodeOffset, 
@@ -698,7 +654,45 @@ MakeLeavesResult cuKDTreeBitonicSearch::MakeLeaves(
     return result;
 }
 
-CT_RESULT cuKDTreeBitonicSearch::Update(void)
+void EventLine::ScanEvents(CTuint length)
+{
+    nutty::ExclusivePrefixSumScan(mask.Begin(), mask.Begin() + length, scannedMasks.Begin(), maskSums.Begin());
+}
+
+void EventLine::CompactClippedEvents(CTuint length)
+{
+    CTuint block = nutty::cuda::GetCudaBlock(length, 256U);
+    CTuint grid = nutty::cuda::GetCudaGrid(length, block);
+    PREPARE_KERNEL(compactEventLine, length)
+        compactEventLine<<<grid, block>>>(GetDst(), GetSrc(), mask.Begin()(), scannedMasks.Begin()(), length);
+    }
+}
+
+void EventLine::ScanEventTypes(void)
+{
+    EventStartScanOp<CTbyte> op0;
+    EventEndScanOp<CTbyte> op1;
+    nutty::ExclusiveScan(type.Begin(1), type.Begin(1) + eventCount, scannedEventTypeStartMask.Begin(), eventTypeMaskSumsStart.Begin(), op0);
+    nutty::ExclusiveScan(type.Begin(1), type.Begin(1) + eventCount, scannedEventTypeEndMask.Begin(), eventTypeMaskSumsEnd.Begin(), op1);
+}
+
+void PrintEventLine(EventLine& line, CTuint l)
+{
+    PRINT_BUFFER_N(line.indexedEvent[0], l);
+    PRINT_BUFFER_N(line.indexedEvent[1], l);
+    ct_printf("\n");
+    PRINT_BUFFER_N(line.nodeIndex[0], l);
+    PRINT_BUFFER_N(line.nodeIndex[1], l);
+    ct_printf("\n");
+    PRINT_BUFFER_N(line.prefixSum[0], l);
+    PRINT_BUFFER_N(line.prefixSum[1], l);
+    ct_printf("\n");
+    PRINT_BUFFER_N(line.primId[0], l);
+    PRINT_BUFFER_N(line.primId[1], l);
+    ct_printf("\n");
+}
+
+CT_RESULT cuKDTreeScan::Update(void)
 {
     if(!m_initialized)
     {
@@ -719,7 +713,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
    
     DEVICE_SYNC_CHECK();
 
-    initNodesContent<<<_grid, _block>>>(m_nodesContent, primitiveCount);
+    //initNodesContent<<<_grid, _block>>>(m_nodesContent, primitiveCount);
 
     DEVICE_SYNC_CHECK();
 
@@ -737,6 +731,37 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     nutty::Copy(m_nodesBBox[0].Begin(), m_sceneBBox.Begin(), 1);
 
     m_nodes_IsLeaf.Insert(0, m_depth == 0);
+    
+    CTuint elementBlock = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
+    CTuint elementGrid = nutty::cuda::GetCudaGrid(primitiveCount, elementBlock);
+
+    m_events3[0].Resize(2 * primitiveCount);
+
+    m_events3[1].Resize(2 * primitiveCount);
+
+    m_events3[2].Resize(2 * primitiveCount);
+
+    cuEventLineTriple src(m_events3, 0);
+    createEvents3<1, 0><<<elementGrid, elementBlock>>>(src, m_primAABBs.Begin()(), m_nodesContent, primitiveCount);
+
+    DEVICE_SYNC_CHECK();
+
+    for(CTbyte i = 0; i < 3; ++i)
+    {
+        m_events3[i].eventCount = 2 * primitiveCount;
+        nutty::Sort(
+            nutty::DevicePtr_Cast<IndexedEvent>(m_events3[i].GetSrc().indexedEvent), 
+            nutty::DevicePtr_Cast<IndexedEvent>(m_events3[i].GetSrc().indexedEvent + 2 * primitiveCount), 
+            EventSort());
+    }
+
+    DEVICE_SYNC_CHECK();
+
+    cuEventLineTriple dst(m_events3);
+
+    reorderEvent3<<<2 * elementGrid, elementBlock>>>(src, dst, 2 * primitiveCount);
+
+    DEVICE_SYNC_CHECK();
 
     CTuint g_interiorNodesCountOnThisLevel = 1;
     CTuint g_currentInteriorNodesCount = 1;
@@ -778,13 +803,13 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         chimera::util::HTimer timer;
         cudaDeviceSynchronize();
         timer.Start();
+
         ComputeSAH_Splits(
             nodeCount, 
             primitiveCount, 
             m_hNodesContentCount.Begin()(),
-            m_nodes_ContentCount.Begin()(),
-            m_nodes_IsLeaf.Begin()() + g_nodeOffset, 
-            m_nodesContent);
+            m_nodes_ContentCount.Begin()());
+
         cudaDeviceSynchronize();
         timer.Stop();
         time += timer.GetMillis();
@@ -800,9 +825,9 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
         CTuint b = nutty::cuda::GetCudaBlock(primitiveCount, 256U);
         CTuint g = nutty::cuda::GetCudaGrid(primitiveCount, b);
-        nutty::ZeroMem(m_primIsLeaf);
 
-        setPrimBelongsToLeaf<<<g, b>>>(m_nodesContent, m_activeNodesIsLeaf.Begin()(), primitiveCount);
+        //todo
+        //setEventBelongsToLeaf<<<g, b>>>(m_nodesContent, m_activeNodesIsLeaf.Begin()(), primitiveCount);
 
         m_newNodesContentCount.Resize(m_nodes_ContentCount.Size());
         m_newNodesContentStartAdd.Resize(m_nodes_ContentCount.Size());
@@ -816,19 +841,41 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         CTuint lastCnt = primitiveCount;
         primitiveCount = leavesRes.interiorPrimitiveCount;
 
+        for(CTbyte i = 0; i < 3; ++i)
+        {
+            CTuint count = m_events3[i].GetEventCount();
+            CTuint block = nutty::cuda::GetCudaBlock(count, 256U);
+            CTuint grid = nutty::cuda::GetCudaGrid(count, b);
+
+            m_events3[i].Resize(2 * count);
+            nutty::ZeroMem(m_events3[i].mask);
+
+            clipEvents<<<grid, block>>>(m_events3[i].GetSrc(), m_events3[i].GetDst(), m_events3[i].mask.Begin()(), m_nodes_ContentStartAdd.Begin()(), m_splits, i, count);
+            //PrintEventLine(m_events3[i], 2 * count);
+            m_events3[i].ScanEvents(2 * count);
+            m_events3[i].CompactClippedEvents(2 * count);
+
+            CTuint ccLeft = m_events3[i].scannedMasks[count - 1] + m_events3[i].mask[count - 1];
+            CTuint ccRight = m_events3[i].scannedMasks[2 * count - 1] + m_events3[i].mask[2 * count - 1] - ccLeft;
+            PRINT_BUFFER(m_events3[i].mask);
+            PRINT_BUFFER(m_events3[i].scannedMasks);
+            m_events3[i].eventCount = ccRight + ccLeft;
+            PrintEventLine(m_events3[i], m_events3[i].eventCount);
+        }
+
         if(leavesRes.interiorPrimitiveCount)
         {
             g_leafContentOffset += leavesRes.leafPrimitiveCount;
 
-            classifyEdges<<<eventGrid, eventBlock>>>(m_nodes, m_events[1], m_splits, m_activeNodesIsLeaf.Begin()(), m_edgeMask.Begin()(), m_lastNodeContentStartAdd.Begin()(), eventCount);
+            //classifyEvents3<<<eventGrid, eventBlock>>>(m_nodes, m_events[1], m_splits, m_activeNodesIsLeaf.Begin()(), m_edgeMask.Begin()(), m_lastNodeContentStartAdd.Begin()(), eventCount);
             DEVICE_SYNC_CHECK();
 
+            /*
             nutty::ExclusivePrefixSumScan(m_edgeMask.Begin(), m_edgeMask.Begin() + eventCount, m_scannedEdgeMask.Begin(), m_edgeMaskSums.Begin());
             DEVICE_SYNC_CHECK();
 
             primitiveCount = m_scannedEdgeMask[eventCount - 1] + m_edgeMask[eventCount - 1];
 
-            nutty::ZeroMem(m_primIsLeaf);
             nutty::DeviceBuffer<CTuint> blabla(primitiveCount);
             setPrimBelongsToLeafFromEvents<<<eventGrid, eventBlock>>>(
                 m_events[1], 
@@ -857,7 +904,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                     0, 
                     nodeCount);
             }
-
+            
             CTuint childCount = (nodeCount - leavesRes.leafCount) * 2;
             CTuint thisLevelNodesLeft = nodeCount - leavesRes.leafCount;
 
@@ -896,6 +943,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
             nutty::Copy(m_nodes_ContentCount.Begin(), m_newNodesContentCount.Begin(), m_newNodesContentCount.Begin() + childCount);
             nutty::Copy(m_nodes_ContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin(), m_newNodesContentStartAdd.Begin() + childCount);
 
+      
             compactPrimitivesFromEvents<<<eventGrid, eventBlock>>>(
                 m_events[1], 
                 m_nodes, 
@@ -918,7 +966,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
 
             leavesRes = MakeLeaves(m_activeNodesIsLeaf.Begin(), g_childNodeOffset, nodeCount, childCount, primitiveCount, g_currentLeafCount + lastLeaves, g_leafContentOffset, 1);
 
-            primitiveCount = leavesRes.interiorPrimitiveCount;
+            primitiveCount = leavesRes.interiorPrimitiveCount; */
 
         }
         else
@@ -929,6 +977,8 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
                 m_nodes_IsLeaf.Insert(g_nodeOffset + i, (CTbyte)1);
             }
         }
+
+        
         g_entries += 2 * nodeCount;
         g_lastChildCount = 2 * nodeCount;
         g_nodeOffset2 = g_nodeOffset;
@@ -970,10 +1020,10 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
         if(d < m_depth-1) //are we not done?
         {
             //check if we need more memory
-            if(2 * primitiveCount > m_edgeMask.Size())
-            {
-                GrowPrimitiveEventMemory();
-            }
+//             if(2 * primitiveCount > m_edgeMask.Size())
+//             {
+//                 GrowPrimitiveEventMemory();
+//             }
 
             if(m_activeNodes.Size() < g_interiorNodesCountOnThisLevel + 2 * g_interiorNodesCountOnThisLevel)
             {
@@ -1021,7 +1071,7 @@ CT_RESULT cuKDTreeBitonicSearch::Update(void)
     return CT_SUCCESS;
 }
 
-void cuKDTreeBitonicSearch::ValidateTree(void)
+void cuKDTreeScan::ValidateTree(void)
 {
     std::queue<CTuint> queue;
 

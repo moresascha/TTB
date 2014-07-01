@@ -521,3 +521,16 @@ __global__ void startSort(Node nodes, IndexedEdge* edges, uint offset);
 __global__ void startGetMinSplits(Node nodes, IndexedSplit* splits, uint offset);
 
 #endif
+
+//-------------
+
+__global__ void createPlaneEvents(
+    CTreal* x,
+    CTreal* y,
+    CTreal* z,
+
+    const BBox* __restrict primBBoxes,
+    CTuint N)
+{
+
+}
