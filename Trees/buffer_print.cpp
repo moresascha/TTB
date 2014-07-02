@@ -9,7 +9,7 @@ std::ostream& operator<<(std::ostream &out, const IndexedSAHSplit& t)
 
 std::ostream& operator<<(std::ostream &out, const IndexedEvent& t)
 {
-    out << "[Split=" << t.v /*"[" << t.v*/ << ", " << (CTuint)t.index << "]";
+    out << t.v; //"[Split=" << t.v /*"[" << t.v*/ << ", " << (CTuint)t.index << "]";
     return out;
 }
 

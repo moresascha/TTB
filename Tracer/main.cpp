@@ -739,7 +739,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         {
             for(int k = 0; k < line; ++k)
             {
-                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "cube.obj", &hhandle);
+                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "cube.obj", &hhandle); //"ice_cube_small.obj"
                 CTuint sumcopy = addSum;
                 hhandle.start += addSum;
                 hhandle.end += addSum;
@@ -793,6 +793,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     float time = 0;
 
     //geoTransMatrix.SetTranslation(0,1,0);
+    //while(1) CTUpdate(tree);
+
     updateTree(tree, nodeGPUData);
 
     if(treeType == CT_CREATE_TREE_CPU)

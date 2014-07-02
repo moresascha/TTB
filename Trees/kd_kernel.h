@@ -2,13 +2,6 @@
 #include "vec_functions.h"
 #include "cuKDTree.h"
 
-#define RETURN_IF_OOB(__N) \
-    CTuint id = GlobalId; \
-    if(id >= __N) \
-    { \
-        return; \
-    }
-
 #define ONE_TO_ONE_CPY(_fieldName) dst.##_fieldName[id] = src.##_fieldName[index]
 
 __global__ void reorderEvents(Event dst, Event src, CTuint N)
@@ -42,7 +35,7 @@ __global__ void createEvents(
     CTuint start_index = 2 * id + 0;
     CTuint end_index = 2 * id + 1;
 
-    events.type[start_index] = EDGE_START;
+    events.type[start_index] = EVENT_START;
     events.type[end_index] = EDGE_END;
 
     events.nodeIndex[start_index] = nodesContent.nodeIndex[id];
@@ -142,11 +135,11 @@ __global__ void classifyEdges(
             
     if(right)
     {
-        edgeMask[id] = type == EDGE_START ? 0 : 1;
+        edgeMask[id] = type == EVENT_START ? 0 : 1;
     }
     else
     {
-        edgeMask[id] = type == EDGE_START ? 1 : 0;
+        edgeMask[id] = type == EVENT_START ? 1 : 0;
     }
 
     nodeIndex = 2 * nodeIndex + (right ? 1 : 0);
@@ -346,8 +339,6 @@ __global__ void makeLeafIfBadSplitOrLessThanMaxElements(
     CTuint above = splits.above[split.index];
     isLeaf[N + 2 * id + 0] = isBad ? 2 : ((below <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
     isLeaf[N + 2 * id + 1] = isBad ? 2 : ((above <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
-//     nodeIsLeaf[N + 2 * id + 0] = isBad ? 0 : ((below <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
-//     nodeIsLeaf[N + 2 * id + 1] = isBad ? 0 : ((above <= MAX_ELEMENTS_PER_LEAF) || makeChildLeaves);
 }
 
 __global__ void compactPrimitivesFromEvents(
@@ -399,28 +390,6 @@ __global__ void setActiveNodesMask(
     {
         ids[id] = id;
     }
-}
-
-__global__ void setNewContentCountAndContentStartAdd(
-    Node nodes,
-    Split splits,
-    CTuint* leafNodesContentCount,
-    CTuint* leafNodesContentStart,
-    const CTuint* __restrict scannedEdges,
-    const CTuint* __restrict interiorNodesScan,
-    const CTuint* __restrict isPrimLeafScanned,
-    const CTuint* __restrict activeNodes,
-    const CTbyte* __restrict activeNodesLeaf,
-    BBox* oldBBoxes,
-    BBox* newBBoxes,
-    CTuint* newContentCount,
-    CTuint* newContentStart,
-    CTuint childOffset,
-    CTuint nodeOffset,
-    CTuint gotLeaves,
-    CTuint N)
-{
-
 }
 
 __global__ void initThisLevelInteriorNodes(

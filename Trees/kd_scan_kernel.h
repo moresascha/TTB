@@ -2,16 +2,17 @@
 #include "vec_functions.h"
 #include "cuKDTree.h"
 
-#define RETURN_IF_OOB(__N) \
-    CTuint id = GlobalId; \
-    if(id >= __N) \
-    { \
-    return; \
-    }
+template <typename T>
+__global__ void makeInverseScan(const T* __restrict scanVals, T* dst, CTuint N)
+{
+    RETURN_IF_OOB(N);
+
+    dst[id] = id - scanVals[id];
+}
 
 __global__ void reorderEvent3(
-    cuEventLineTriple src,
     cuEventLineTriple dst,
+    cuEventLineTriple src,
     CTuint N)
 {
     RETURN_IF_OOB(N);
@@ -38,7 +39,6 @@ template<CTbyte useFOR, CTbyte axis>
 __global__ void createEvents3(
     cuEventLineTriple events,
     const BBox* __restrict primAxisAlignedBB,
-    NodeContent nodesContent,
     CTuint N)
 {
     RETURN_IF_OOB(N);
@@ -53,7 +53,7 @@ __global__ void createEvents3(
     {
         for(CTbyte a = 0; a < 3; ++a)
         {
-            events.getLine(a).type[start_index] = EDGE_START;
+            events.getLine(a).type[start_index] = EVENT_START;
             events.getLine(a).type[end_index] = EDGE_END;
 
             events.getLine(a).nodeIndex[start_index] = 0;
@@ -77,7 +77,7 @@ __global__ void createEvents3(
     }
 }
 
-template <CTbyte LOGNEST_AXIS>
+template <CTbyte LONGEST_AXIS>
 __global__ void computeSAHSplits3(
     cuEventLineTriple events, 
     const CTuint* __restrict nodesContentCount,
@@ -110,7 +110,7 @@ __global__ void computeSAHSplits3(
 
     CTreal split = events.lines[axis].indexedEvent[id].v;
 
-    CTuint prefixPrims = events.lines[axis].prefixSum[id]/2;
+    CTuint prefixPrims = events.lines[axis].prefixSum[id];
 
     CTuint primCount = nodesContentCount[nodeIndex];
     
@@ -159,11 +159,11 @@ __global__ void classifyEvents3(
 
     if(right)
     {
-        edgeMask[id] = type == EDGE_START ? 0 : 1;
+        edgeMask[id] = type == EVENT_START ? 0 : 1;
     }
     else
     {
-        edgeMask[id] = type == EDGE_START ? 1 : 0;
+        edgeMask[id] = type == EVENT_START ? 1 : 0;
     }
 
     nodeIndex = 2 * nodeIndex + (right ? 1 : 0);
@@ -229,23 +229,6 @@ __global__ void clipEvents(
     CTreal split = splits.v[isplit.index];
     CTbyte type = src.type[id];
 
-    //CTuint above = splits.above[isplit.index];
-    //CTuint below = splits.below[isplit.index];
-
-//     CTuint right = !(split > v || (v == split && type == EDGE_END));
-// 
-//     if(right)
-//     {
-//         edgeMask[id] = type == EDGE_START ? 0 : 1;
-//     }
-//     else
-//     {
-//         edgeMask[id] = type == EDGE_START ? 1 : 0;
-//     }
-// 
-//     nodeIndex = 2 * nodeIndex + (right ? 1 : 0);
-//     events.nodeIndex[id] = nodeIndex;
-
     CTuint nodeIndex = src.nodeIndex[id];
 
     if(getAxis(bbox.m_min, splitAxis) <= split && getAxis(bbox.m_max, splitAxis) <= split)
@@ -253,7 +236,7 @@ __global__ void clipEvents(
         mask[id] = 1;
 
         //left
-        clipCopyEvent(dst, src, id, id);
+        copyEvent(dst, src, id, id);
         dst.nodeIndex[id] = 2 * nodeIndex;
     }
     else if(getAxis(bbox.m_min, splitAxis) >= split && getAxis(bbox.m_max, splitAxis) >= split)
@@ -261,7 +244,7 @@ __global__ void clipEvents(
         mask[N + id] = 1;
 
         //right
-        clipCopyEvent(dst, src, N + id, id);
+        copyEvent(dst, src, N + id, id);
         dst.nodeIndex[N + id] = 2 * nodeIndex + 1;
         dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
     }
@@ -283,6 +266,19 @@ __global__ void clipEvents(
         dst.nodeIndex[N + id] = 2 * nodeIndex+ 1;
         dst.ranges[N + id] = bbox;
         dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
+
+        if(myAxis == splitAxis)
+        {
+            CTuint right = !(split > v || (v == split && type == EDGE_END));
+            if(right)
+            {
+                dst.indexedEvent[id].v = split;
+            }
+            else
+            {
+                dst.indexedEvent[N + id].v = split;
+            }
+        }
     }
 }
 
@@ -298,5 +294,136 @@ __global__ void compactEventLine(
     if(mask[id])
     {
         copyEvent(dst, src, prefixSum[id], id);
+    }
+}
+
+__global__ void initInteriorNodes(
+    cuEventLineTriple events, 
+    Node nodes,
+    Split splits,
+    const CTuint* __restrict activeNodes,
+    const CTuint* __restrict activeNodesThisLevel,
+    BBox* oldBBoxes,
+    BBox* newBBoxes,
+    CTuint* newContentCount,
+    CTuint* newContentStart,
+    CTuint* newActiveNodes,
+    CTbyte* activeNodesIsLeaf,
+    CTuint childOffset,
+    CTuint nodeOffset,
+    CTuint N,
+    CTuint* oldNodeContentStart,
+    CTbyte makeLeaves)
+{
+    RETURN_IF_OOB(N);
+
+    CTuint an = activeNodes[id];
+    CTuint can = activeNodesThisLevel[id];
+    CTuint nodeId = nodeOffset + an;
+
+    CTuint edgesBeforeMe = 2 * oldNodeContentStart[can];
+    IndexedSAHSplit split = splits.indexedSplit[edgesBeforeMe];
+
+    CTreal s = splits.v[split.index];
+    CTbyte axis = splits.axis[split.index];
+    nodes.split[nodeId] = s;
+    nodes.splitAxis[nodeId] = axis;
+
+    CTuint below = splits.below[split.index];
+    CTuint above = splits.above[split.index];
+
+    CTuint dst = id;
+
+    newContentCount[2 * dst + 0] = below;
+    newContentCount[2 * dst + 1] = above;
+
+    CTuint ltmp = events.lines[axis].scannedEventTypeEndMask[edgesBeforeMe];
+    CTuint belowPrims = ltmp;
+    CTuint abovePrims = ltmp + below;
+
+    newContentStart[2 * dst + 0] = belowPrims;
+    newContentStart[2 * dst + 1] = abovePrims;
+
+    CTuint leftChildIndex = childOffset + 2 * can + 0;
+    CTuint rightChildIndex = childOffset + 2 * can + 1;
+
+    nodes.leftChild[nodeId] = leftChildIndex;
+    nodes.rightChild[nodeId] = rightChildIndex;
+
+    nodes.isLeaf[childOffset + 2 * can + 0] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    nodes.isLeaf[childOffset + 2 * can + 1] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+
+    activeNodesIsLeaf[2 * id + 0] = below <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    activeNodesIsLeaf[2 * id + 1] = above <= MAX_ELEMENTS_PER_LEAF || makeLeaves;
+    newActiveNodes[2 * id + 0] = 2 * can + 0;
+    newActiveNodes[2 * id + 1] = 2 * can + 1;
+
+    BBox l;
+    BBox r;
+
+    splitAABB(&oldBBoxes[id], s, axis, &l, &r);
+
+    if(below > MAX_ELEMENTS_PER_LEAF)
+    {
+        newBBoxes[2 * dst + 0] = l;
+    }
+
+    if(above > MAX_ELEMENTS_PER_LEAF)
+    {
+        newBBoxes[2 * dst + 1] = r;
+    }
+}
+
+__global__ void setEventsBelongToLeaf(
+    cuEventLineTriple events,
+    const CTbyte* __restrict isLeaf,
+    CTuint* eventIsLeaf,
+    CTuint N)
+{
+    RETURN_IF_OOB(N);
+
+    eventIsLeaf[id] = isLeaf[events.lines[0].nodeIndex[id]] && (events.lines[0].type[id] == EVENT_START);
+}
+
+__global__ void compactLeafData(
+    cuEventLineTriple events,
+    CTuint* leafContent, 
+    const CTuint* __restrict eventIsLeafMask, 
+    const CTuint* __restrict prefixSumLeaf, 
+    CTuint N)
+{
+    RETURN_IF_OOB(N);
+
+    if(eventIsLeafMask[id])
+    {
+        CTuint dst = prefixSumLeaf[id];
+        leafContent[dst] = events.lines[0].primId[id];
+    }
+}
+
+__global__ void compactInteriorEventData(
+    cuEventLineTriple dstEvent,
+    cuEventLineTriple srcEvent,
+    Node nodes,
+    const CTbyte* __restrict activeNodeIsLeaf,
+    const CTuint* __restrict interiorCountScanned,
+    const CTuint* __restrict interiorContentScanned,
+    CTuint N)
+{
+    RETURN_IF_OOB(N);
+    CTuint oldNodeIndex = srcEvent.lines[0].nodeIndex[id];
+    if(!activeNodeIsLeaf[oldNodeIndex])
+    {
+        CTuint eventsBeforeMe = 2 * nodes.contentStart[oldNodeIndex];
+        CTuint nodeIndex = interiorCountScanned[oldNodeIndex];
+        for(CTbyte i = 0; i < 3; ++i)
+        {
+            dstEvent.lines[i].indexedEvent[id - eventsBeforeMe] = srcEvent.lines[i].indexedEvent[id];
+            dstEvent.lines[i].nodeIndex[id - eventsBeforeMe] = nodeIndex;
+            dstEvent.lines[i].prefixSum[id - eventsBeforeMe] = 2 * interiorContentScanned[oldNodeIndex];
+            dstEvent.lines[i].primId[id - eventsBeforeMe] = srcEvent.lines[i].primId[id];
+            dstEvent.lines[i].ranges[id - eventsBeforeMe] = srcEvent.lines[i].ranges[id];
+            dstEvent.lines[i].type[id - eventsBeforeMe] = srcEvent.lines[i].type[id];
+        }
     }
 }

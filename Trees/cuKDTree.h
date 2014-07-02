@@ -11,7 +11,15 @@
 #include "memory.h"
 #include "device_heap.h"
 
-#define EDGE_START ((byte)0)
+
+#define RETURN_IF_OOB(__N) \
+    CTuint id = GlobalId; \
+    if(id >= __N) \
+    { \
+    return; \
+    }
+
+#define EVENT_START ((byte)0)
 #define EDGE_END   ((byte)1)
 
 template <
@@ -558,26 +566,13 @@ struct EventLine
         return events;
     }
 
-    void ZeroMem(CTuint offset)
-    {
-//         for(CTbyte i = 0; i < 2; ++i)
-//         {
-//             CTuint length = indexedEvent[i].Size() - offset;
-//             nutty::ZeroMem(indexedEvent[i].Begin() + offset, indexedEvent[i].Begin() + length);
-//             nutty::ZeroMem(type[i]);
-//             nutty::ZeroMem(nodeIndex[i]);
-//             nutty::ZeroMem(prefixSum[i]);
-//             nutty::ZeroMem(primId[i]);
-//         }
-    }
-
     void ScanEventTypes(void);
 
     void ScanEvents(CTuint length);
 
     void CompactClippedEvents(CTuint length);
 
-    void Toogle(void)
+    void Toggle(void)
     {
         toggleIndex ^= 1;
     }
@@ -602,18 +597,20 @@ typedef struct cuEventLineTriple
 
     }
 
-    __host__ cuEventLineTriple(EventLine line[3])
-    {
-        lines[0] = line[0].GetDst();
-        lines[1] = line[1].GetDst();
-        lines[2] = line[2].GetDst();
-    }
-
     __host__ cuEventLineTriple(EventLine line[3], CTbyte index)
     {
-        lines[0] = line[0].GetPtr(index);
-        lines[1] = line[1].GetPtr(index);
-        lines[2] = line[2].GetPtr(index);
+        if(index == 0)
+        {
+            lines[0] = line[0].GetSrc();
+            lines[1] = line[1].GetSrc();
+            lines[2] = line[2].GetSrc();
+        }
+        else
+        {
+            lines[0] = line[0].GetDst();
+            lines[1] = line[1].GetDst();
+            lines[2] = line[2].GetDst();
+        }
     }
 
     __device__ cuEventLine& getLine(CTbyte index)
@@ -627,7 +624,7 @@ class cuKDTreeScan : public cuKDTree
 {
 private:
     void ClearBuffer(void);
-    void GrowPrimitiveEventMemory(void);
+    void GrowSplitMemory(CTuint size);
     void GrowNodeMemory(void);
     void GrowPerLevelNodeMemory(CTuint newSize);
     void InitBuffer(void);
@@ -638,7 +635,7 @@ private:
 
     void ComputeSAH_Splits(
         CTuint nodeCount, 
-        CTuint primitiveCount, 
+        CTuint eventCount, 
         const CTuint* hNodesContentCount, 
         const CTuint* nodesContentCount);
 
@@ -649,7 +646,7 @@ private:
         CTuint g_nodeOffset, 
         CTuint nodeOffset, 
         CTuint nodeCount, 
-        CTuint primitiveCount, 
+        CTuint eventCount, 
         CTuint currentLeafCount, 
         CTuint leafContentOffset,
         CTuint initNodeToLeafIndex);
@@ -669,16 +666,12 @@ private:
 
     EventLine m_events3[3];
 
-    NodeContent m_nodesContent;
-    nutty::DeviceBuffer<CTuint> m_primIndex;
-    nutty::DeviceBuffer<CTuint> m_primNodeIndex;
-    nutty::DeviceBuffer<CTuint> m_primPrefixSum;
-    nutty::DeviceBuffer<CTbyte> m_primIsLeaf;
+    nutty::DeviceBuffer<CTuint> m_eventIsLeaf;
 
-    Scanner m_primIsLeafScanner;
-    Scanner m_primIsNoLeafScanner;
+    Scanner m_eventIsLeafScanner;
+    nutty::DeviceBuffer<CTuint> m_eventIsInteriorScanned;
     Scanner m_leafCountScanner;
-    Scanner m_interiorCountScanner;
+    nutty::DeviceBuffer<CTuint> m_interiorCountScanned;
     Scanner m_interiorContentScanner;
     Scanner m_leafContentScanner;
 
@@ -695,9 +688,6 @@ private:
 
     DoubleBuffer<BBox> m_nodesBBox;
 
-    nutty::DeviceBuffer<CTuint> m_newInteriorContent;
-    nutty::DeviceBuffer<CTuint> m_newPrimNodeIndex;
-    nutty::DeviceBuffer<CTuint> m_newPrimPrefixSum;
     nutty::DeviceBuffer<CTuint> m_newNodesContentCount;
     nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
 
