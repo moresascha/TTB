@@ -116,6 +116,8 @@ __device__ __host__ __forceinline  float getArea(const __AABB& aabb)
     return 2 * axisScale.x * axisScale.y + 2 * axisScale.x * axisScale.z + 2 * axisScale.y * axisScale.z;
 }
 
+#define SAH_BORDER_ERROR_MARGIN (1e-3f)
+
 template <
     typename __AABB
 >
@@ -123,7 +125,7 @@ __device__ __host__ CTreal __inline getSAH(const __AABB& node, CTint axis, CTrea
 {
     CTreal cost = INVALID_SAH;
 
-    if(split > getAxis(node.GetMin(), axis) && split < getAxis(node.GetMax(), axis))
+    if(split - SAH_BORDER_ERROR_MARGIN > getAxis(node.GetMin(), axis) && split + SAH_BORDER_ERROR_MARGIN < getAxis(node.GetMax(), axis))
     {
         CTreal3 axisScale = getAxisScale(node);
         CTreal invTotalSA = 1.0f / getArea(node);

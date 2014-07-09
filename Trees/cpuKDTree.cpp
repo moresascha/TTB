@@ -703,6 +703,12 @@ CT_RESULT cpuKDTree::AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle)
     }
 }
 
+CT_RESULT cpuKDTree::RayCast(const CTreal3& eye, const CTreal3& dir, CTGeometryHandle* handle) const
+{
+
+    return CT_SUCCESS;
+}
+
 CTreal3 transform3f(const CTreal4* m3x3l, const CTreal3& vector)
 {
     CTreal4 res;

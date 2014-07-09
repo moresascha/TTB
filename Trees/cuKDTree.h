@@ -213,6 +213,11 @@ public:
 
     }
 
+    CT_RESULT RayCast(const CTreal3& eye, const CTreal3& dir, CTGeometryHandle* handle) const
+    {
+        return CT_NOT_YET_IMPLEMENTED;
+    }
+
     CT_RESULT SetTopology(CT_GEOMETRY_TOPOLOGY topo)
     {
         m_topo = topo;
@@ -286,42 +291,42 @@ public:
     add_uuid_header(cuKDTree);
 };
 
-class Scanner
-{
-private:
-    nutty::DeviceBuffer<CTuint> m_scannedData;
-    nutty::DeviceBuffer<CTuint> m_sums;
-
-public:
-    void Resize(CTuint size)
-    {
-        m_scannedData.Resize(size);
-        m_sums.Resize(size);
-    }
-
-    template<
-        typename Iterator,
-        typename Operator
-    >
-    void IncScan(Iterator& begin, Iterator& end, Operator op)
-    {
-        nutty::InclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
-    }
-
-    template<
-        typename Iterator,
-        typename Operator
-    >
-    void ExcScan(Iterator& begin, Iterator& end, Operator op)
-    {
-        nutty::ExclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
-    }
-
-    const nutty::DeviceBuffer<CTuint>& GetPrefixSum(void)
-    {
-        return m_scannedData;
-    }
-};
+// class Scanner
+// {
+// private:
+//     nutty::DeviceBuffer<CTuint> m_scannedData;
+//     nutty::DeviceBuffer<CTuint> m_sums;
+// 
+// public:
+//     void Resize(CTuint size)
+//     {
+//         m_scannedData.Resize(size);
+//         m_sums.Resize(size);
+//     }
+// 
+//     template<
+//         typename Iterator,
+//         typename Operator
+//     >
+//     void IncScan(Iterator& begin, Iterator& end, Operator op)
+//     {
+//         nutty::InclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
+//     }
+// 
+//     template<
+//         typename Iterator,
+//         typename Operator
+//     >
+//     void ExcScan(Iterator& begin, Iterator& end, Operator op)
+//     {
+//         nutty::ExclusiveScan(begin, end, m_scannedData.Begin(), m_sums.Begin(), op);
+//     }
+// 
+//     const nutty::DeviceBuffer<CTuint>& GetPrefixSum(void)
+//     {
+//         return m_scannedData;
+//     }
+// };
 
 struct MakeLeavesResult
 {
@@ -393,12 +398,12 @@ private:
     nutty::DeviceBuffer<CTuint> m_primPrefixSum;
     nutty::DeviceBuffer<CTbyte> m_primIsLeaf;
 
-    Scanner m_primIsLeafScanner;
-    Scanner m_primIsNoLeafScanner;
-    Scanner m_leafCountScanner;
-    Scanner m_interiorCountScanner;
-    Scanner m_interiorContentScanner;
-    Scanner m_leafContentScanner;
+    nutty::Scanner m_primIsLeafScanner;
+    nutty::Scanner m_primIsNoLeafScanner;
+    nutty::Scanner m_leafCountScanner;
+    nutty::Scanner m_interiorCountScanner;
+    nutty::Scanner m_interiorContentScanner;
+    nutty::Scanner m_leafContentScanner;
 
     nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
     nutty::DeviceBuffer<CTuint> m_maskedleafContent;
@@ -668,12 +673,12 @@ private:
 
     nutty::DeviceBuffer<CTuint> m_eventIsLeaf;
 
-    Scanner m_eventIsLeafScanner;
+    nutty::Scanner m_eventIsLeafScanner;
     nutty::DeviceBuffer<CTuint> m_eventIsInteriorScanned;
-    Scanner m_leafCountScanner;
+    nutty::Scanner m_leafCountScanner;
     nutty::DeviceBuffer<CTuint> m_interiorCountScanned;
-    Scanner m_interiorContentScanner;
-    Scanner m_leafContentScanner;
+    nutty::Scanner m_interiorContentScanner;
+    nutty::Scanner m_leafContentScanner;
 
     nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
     nutty::DeviceBuffer<CTuint> m_maskedleafContent;

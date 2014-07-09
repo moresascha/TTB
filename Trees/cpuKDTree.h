@@ -285,6 +285,8 @@ public:
 
     void OnGeometryMoved(const CTGeometryHandle geo);
 
+    CT_RESULT RayCast(const CTreal3& eye, const CTreal3& dir, CTGeometryHandle* handle) const;
+
     const CTGeometryHandle* GetGeometry(CTuint* gc)
     {
         *gc = (CTuint)m_linearGeoHandles.size();

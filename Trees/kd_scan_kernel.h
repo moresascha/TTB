@@ -1,6 +1,9 @@
 #pragma once
 #include "vec_functions.h"
 #include "cuKDTree.h"
+#include <Reduce.h>
+
+#define DYNAMIC_PARALLELISM
 
 template <typename T>
 __global__ void makeInverseScan(const T* __restrict scanVals, T* dst, CTuint N)
@@ -190,7 +193,7 @@ __device__ void copyEvent(cuEventLine dst, cuEventLine src, CTuint dstIndex, CTu
 {
     dst.indexedEvent[dstIndex] = src.indexedEvent[srcIndex];
     dst.nodeIndex[dstIndex] = src.nodeIndex[srcIndex];
-    dst.prefixSum[dstIndex] = src.prefixSum[srcIndex];
+    //dst.prefixSum[dstIndex] = src.prefixSum[srcIndex];
     dst.primId[dstIndex] = src.primId[srcIndex];
     dst.ranges[dstIndex] = src.ranges[srcIndex];
     dst.type[dstIndex] = src.type[srcIndex];
@@ -211,13 +214,15 @@ __global__ void clipEvents(
     cuEventLine src,
     CTuint* mask,
     const CTuint* __restrict nodeContentStart,
+    const CTuint* __restrict nodeContentCount,
     Split splits,
     CTbyte myAxis,
-    CTuint N)
+    CTuint eventCount)
 {
-    RETURN_IF_OOB(N);
+    RETURN_IF_OOB(eventCount);
 
-    CTuint eventsLeftFromMe = 2 * nodeContentStart[src.nodeIndex[id]];
+    CTuint nodeIndex = src.nodeIndex[id];
+    CTuint eventsLeftFromMe = 2 * nodeContentStart[nodeIndex];
 
     IndexedSAHSplit isplit = splits.indexedSplit[eventsLeftFromMe];
     
@@ -229,15 +234,15 @@ __global__ void clipEvents(
     CTreal split = splits.v[isplit.index];
     CTbyte type = src.type[id];
 
-    CTuint nodeIndex = src.nodeIndex[id];
+    CTuint N = eventsLeftFromMe + 2 * nodeContentCount[nodeIndex];
 
     if(getAxis(bbox.m_min, splitAxis) <= split && getAxis(bbox.m_max, splitAxis) <= split)
     {
-        mask[id] = 1;
+        mask[eventsLeftFromMe + id] = 1;
 
         //left
-        copyEvent(dst, src, id, id);
-        dst.nodeIndex[id] = 2 * nodeIndex;
+        copyEvent(dst, src, eventsLeftFromMe + id, id);
+        dst.nodeIndex[eventsLeftFromMe + id] = 2 * nodeIndex;
     }
     else if(getAxis(bbox.m_min, splitAxis) >= split && getAxis(bbox.m_max, splitAxis) >= split)
     {
@@ -246,33 +251,35 @@ __global__ void clipEvents(
         //right
         copyEvent(dst, src, N + id, id);
         dst.nodeIndex[N + id] = 2 * nodeIndex + 1;
-        dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
+        
+        //dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
     }
     else
     {
-        mask[id] = 1;
+        mask[eventsLeftFromMe + id] = 1;
         mask[N + id] = 1;
 
         //both
-        clipCopyEvent(dst, src, id, id);
+        clipCopyEvent(dst, src, eventsLeftFromMe + id, id);
         CTreal save = getAxis(bbox.m_max, splitAxis);
         setAxis(bbox.m_max, splitAxis, split);
-        dst.nodeIndex[id] = 2 * nodeIndex;
-        dst.ranges[id] = bbox;
+        dst.nodeIndex[eventsLeftFromMe + id] = 2 * nodeIndex;
+        dst.ranges[eventsLeftFromMe + id] = bbox;
 
         setAxis(bbox.m_max, splitAxis, save);
         clipCopyEvent(dst, src, N + id, id);
         setAxis(bbox.m_min, splitAxis, split);
         dst.nodeIndex[N + id] = 2 * nodeIndex+ 1;
         dst.ranges[N + id] = bbox;
-        dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
+        
+        //dst.prefixSum[N + id] = src.prefixSum[id] + splits.below[isplit.index];
 
         if(myAxis == splitAxis)
         {
             CTuint right = !(split > v || (v == split && type == EDGE_END));
             if(right)
             {
-                dst.indexedEvent[id].v = split;
+                dst.indexedEvent[eventsLeftFromMe + id].v = split;
             }
             else
             {
@@ -317,32 +324,32 @@ __global__ void initInteriorNodes(
 {
     RETURN_IF_OOB(N);
 
-    CTuint an = activeNodes[id];
     CTuint can = activeNodesThisLevel[id];
-    CTuint nodeId = nodeOffset + an;
-
+    CTuint an = activeNodes[id];
     CTuint edgesBeforeMe = 2 * oldNodeContentStart[can];
+
     IndexedSAHSplit split = splits.indexedSplit[edgesBeforeMe];
 
-    CTreal s = splits.v[split.index];
     CTbyte axis = splits.axis[split.index];
-    nodes.split[nodeId] = s;
-    nodes.splitAxis[nodeId] = axis;
-
+    CTreal s = splits.v[split.index];
     CTuint below = splits.below[split.index];
     CTuint above = splits.above[split.index];
+
+    CTuint nodeId = nodeOffset + an;
+    nodes.split[nodeId] = s;
+    nodes.splitAxis[nodeId] = axis;
 
     CTuint dst = id;
 
     newContentCount[2 * dst + 0] = below;
     newContentCount[2 * dst + 1] = above;
 
-    CTuint ltmp = events.lines[axis].scannedEventTypeEndMask[edgesBeforeMe];
-    CTuint belowPrims = ltmp;
-    CTuint abovePrims = ltmp + below;
-
-    newContentStart[2 * dst + 0] = belowPrims;
-    newContentStart[2 * dst + 1] = abovePrims;
+//     CTuint ltmp = events.lines[axis].scannedEventTypeEndMask[edgesBeforeMe];
+//     CTuint belowPrims = ltmp;
+//     CTuint abovePrims = ltmp + below;
+// 
+//     newContentStart[2 * dst + 0] = belowPrims;
+//     newContentStart[2 * dst + 1] = abovePrims;
 
     CTuint leftChildIndex = childOffset + 2 * can + 0;
     CTuint rightChildIndex = childOffset + 2 * can + 1;
@@ -408,22 +415,68 @@ __global__ void compactInteriorEventData(
     const CTbyte* __restrict activeNodeIsLeaf,
     const CTuint* __restrict interiorCountScanned,
     const CTuint* __restrict interiorContentScanned,
-    CTuint N)
+    const CTuint* __restrict leafContentScanned,
+    CTuint N,
+    CTuint leafPrimCount)
 {
     RETURN_IF_OOB(N);
     CTuint oldNodeIndex = srcEvent.lines[0].nodeIndex[id];
     if(!activeNodeIsLeaf[oldNodeIndex])
     {
-        CTuint eventsBeforeMe = 2 * nodes.contentStart[oldNodeIndex];
+        //CTuint eventsBeforeMe = leafPrimCount ? 2 * nodes.contentStart[oldNodeIndex] : 0;
+        CTuint eventsBeforeMe = 2 * leafContentScanned[oldNodeIndex];//leafPrimCount ? 2 * nodes.contentStart[oldNodeIndex] : 0;
         CTuint nodeIndex = interiorCountScanned[oldNodeIndex];
         for(CTbyte i = 0; i < 3; ++i)
         {
             dstEvent.lines[i].indexedEvent[id - eventsBeforeMe] = srcEvent.lines[i].indexedEvent[id];
             dstEvent.lines[i].nodeIndex[id - eventsBeforeMe] = nodeIndex;
-            dstEvent.lines[i].prefixSum[id - eventsBeforeMe] = 2 * interiorContentScanned[oldNodeIndex];
+            dstEvent.lines[i].prefixSum[id - eventsBeforeMe] = interiorContentScanned[oldNodeIndex];
             dstEvent.lines[i].primId[id - eventsBeforeMe] = srcEvent.lines[i].primId[id];
             dstEvent.lines[i].ranges[id - eventsBeforeMe] = srcEvent.lines[i].ranges[id];
             dstEvent.lines[i].type[id - eventsBeforeMe] = srcEvent.lines[i].type[id];
         }
     }
 }
+
+__global__ void setPrefixSumAndContentStart(
+    cuEventLineTriple events,
+    const CTuint* __restrict scannedNodesContentCount,
+    CTuint* nodeContentStartAdd,
+    CTuint nodesCount,
+    CTuint N)
+{
+    RETURN_IF_OOB(N);
+
+    if(id < nodesCount)
+    {
+        nodeContentStartAdd[id] = scannedNodesContentCount[id];
+    }
+
+    for(CTbyte i = 0; i < 3; ++i)
+    {
+        events.lines[i].prefixSum[id] = scannedNodesContentCount[events.lines[i].nodeIndex[id]];
+    }
+}
+
+
+#if defined DYNAMIC_PARALLELISM
+
+__global__ void dpReduceSAHSplits(Node nodes, IndexedSAHSplit* splits, uint N)
+{
+    RETURN_IF_OOB(N);
+
+    nutty::DevicePtr<IndexedSAHSplit>::size_type start = 2 * nodes.contentStart[id];
+    nutty::DevicePtr<IndexedSAHSplit>::size_type length = 2 * nodes.contentCount[id];
+
+    IndexedSAHSplit neutralSplit;
+    neutralSplit.index = 0;
+    neutralSplit.sah = FLT_MAX;
+    nutty::DevicePtr<IndexedSAHSplit> ptr_start(splits + start);
+    cudaStream_t stream;
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    nutty::base::ReduceDP(ptr_start, ptr_start, length, ReduceIndexedSplit(), neutralSplit, stream);
+    //cudaDeviceSynchronize();
+    //cudaStreamDestroy(stream);
+}
+
+#endif

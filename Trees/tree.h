@@ -23,6 +23,8 @@ public:
 
     virtual CTuint GetInteriorNodesCount(void) const = 0;
 
+    virtual CT_RESULT RayCast(const CTreal3& eye, const CTreal3& dir, CTGeometryHandle* handle) const = 0;
+
     virtual CTuint GetLeafNodesCount(void) const = 0;
 
     virtual CT_TREE_DEVICE GetDeviceType(void) const = 0;

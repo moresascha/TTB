@@ -7,6 +7,8 @@
 glProgram* g_fontProg;
 glGeometry* g_fontGeo;
 GLuint g_fontTexture;
+unsigned int g_windowWidth;
+unsigned int g_windowHeight;
 
 struct CMFontMetrics
 {
@@ -134,8 +136,10 @@ bool ReadBMFont(const char* file)
     return true;
 }
 
-bool FontInit(void)
+bool FontInit(unsigned int w, unsigned int h)
 {
+    g_windowWidth = w;
+    g_windowHeight = h;
     g_fontProg = g_fontProg->CreateProgramFromFile("glsl/font_vs.glsl", "glsl/font_fs.glsl");
 
     if(g_fontProg == NULL)
@@ -205,8 +209,8 @@ void FontDrawBMFont(const char* text, float x, float y)
 //     RECT r;
 //     GetClientRect(GetWindowHandle(), &r); 
 
-    float w = (float) 768;
-    float h = (float) 768;
+    float w = (float) g_windowWidth;
+    float h = (float) g_windowHeight;
 
     for(const char* cp = text; *cp != '\0'; ++cp)
     {

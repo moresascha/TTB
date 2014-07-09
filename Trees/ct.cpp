@@ -190,6 +190,15 @@ CT_RESULT CT_API CTTraverse(ICTTree* tree, CT_TREE_TRAVERSAL order, OnNodeTraver
     return tree->Traverse(order, callBack, userData);
 }
 
+CT_RESULT CTRayCastGeometry(const ICTTree* tree, const CTreal3& eye, const CTreal3& dir, CTGeometryHandle* handlePtr)
+{
+    if(handlePtr)
+    {
+        return tree->RayCast(eye, dir, handlePtr);
+    }
+    return CT_INVALID_VALUE;
+}
+
 CT_RESULT CT_API CTTransformGeometryHandle(ICTTree* tree, CTGeometryHandle handle, const CTreal4* matrix4x4)
 {
     tree->TransformGeometry(handle, matrix4x4);

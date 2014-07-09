@@ -1,6 +1,6 @@
 #pragma once
 
-bool FontInit(void);
+bool FontInit(unsigned int width, unsigned int height);
 
 void FontBeginDraw(void);
 

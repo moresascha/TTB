@@ -161,10 +161,18 @@ CT_EXPORT CT_RESULT CT_API CTGetTreeDeviceType
     CT_TREE_DEVICE* type
     );
 
-CT_EXPORT CT_RESULT CTGetAxisAlignedBB
+CT_EXPORT CT_RESULT CT_API CTGetAxisAlignedBB
     (
     const ICTTree* tree, 
     const ICTAABB** aabb
+    );
+
+CT_EXPORT CT_RESULT CT_API CTRayCastGeometry
+    (
+    const ICTTree* tree,
+    const CTreal3& eye,
+    const CTreal3& dir,
+    CTGeometryHandle* handlePtr
     );
 
 CT_EXPORT CT_RESULT CT_API CTGetLeafNodeCount

@@ -677,13 +677,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     g_cam.Move(0, 5, -5);
 
-    assert(FontInit());
+    int twidth = width / 2;
+    int theight = height;
+
+    assert(FontInit(twidth, theight));
 
     glProgram* p = glProgram::CreateProgramFromFile("glsl/vs.glsl", "glsl/fs.glsl");
     p->Bind();
-
-    int twidth = width / 2;
-    int theight = height;
     
     int size = twidth * theight * 4;
 
@@ -730,7 +730,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     std::vector<GeoHandle> cubeHandles;
     chimera::util::cmRNG rng;
     CTuint addSum = 12*3;
-    int line = 1;
+    int line = 2;
     srand(0);
 
     for(int i = 0; i < line; ++i)
@@ -739,7 +739,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         {
             for(int k = 0; k < line; ++k)
             {
-                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "cube.obj", &hhandle); //"ice_cube_small.obj"
+                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "ice_cube_small.obj", &hhandle); //"ice_cube_small.obj"
                 CTuint sumcopy = addSum;
                 hhandle.start += addSum;
                 hhandle.end += addSum;
@@ -750,6 +750,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                 float ox = rng.NextCubeFloat(2.1f);
                 float oy = rng.NextFloat(1.1f);
                 float oz = rng.NextCubeFloat(2.1f);
+
+//                 float dir = -1 + 2 * (j % 2);
+//                 model.SetRotateX(dir * (j/(float)line * line * line));
+//                 model.RotateY(dir * (0.5f*k/(float)line * line * line));
+//                 model.RotateZ(dir * (2*i/(float)(float)line * line * line));
+
                 model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
                 model.Translate(ox, oy, oz);
                 CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
@@ -759,6 +765,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "Spiral_Caged.obj");
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "dragon.obj");
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
@@ -841,31 +848,31 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         { 
             float time = timer.VGetTime() * 2 * 1e-4f;
             float dt = 1e-3f * timer.VGetLastMillis();
-            static bool a = !true;
+            static bool a = true;
             if(a)
               {
                   int index = 0;
-//                   for(int i = 0; i < line; ++i)
-//                   {
-//                       for(int j = 0; j < line; ++j)
-//                       {
-//                           for(int k = 0; k < line; ++k)
-//                           {
-//                               GeoHandle hhandle = cubeHandles[index];
-//                               float dir = -1 + 2 * (index % 2);
-//                               model.SetRotateX(dir * (time + index/(float)cubeHandles.size()));
-//                               model.RotateY(dir * (time + 0.5f*index/(float)cubeHandles.size()));
-//                               model.RotateZ(dir * (time + 2*index/(float)(float)cubeHandles.size()));
-//                               float scale = 4;
-//                               model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
-//        
-//                               CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
-// 
-//                               RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start));
-//                               index++;
-//                           }
-//                       }
-//                 }
+                  for(int i = 0; i < line; ++i)
+                  {
+                      for(int j = 0; j < line; ++j)
+                      {
+                          for(int k = 0; k < line; ++k)
+                          {
+                              GeoHandle hhandle = cubeHandles[index];
+                              float dir = -1 + 2 * (index % 2);
+                              model.SetRotateX(dir * (time + index/(float)cubeHandles.size()));
+                              model.RotateY(dir * (time + 0.5f*index/(float)cubeHandles.size()));
+                              model.RotateZ(dir * (time + 2*index/(float)(float)cubeHandles.size()));
+                              float scale = 4;
+                              model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
+       
+                              CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+
+                              RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start));
+                              index++;
+                          }
+                      }
+                }
                 cudaDeviceSynchronize();
                 traverseTimer.Start();
                 updateTree(tree, nodeGPUData);
