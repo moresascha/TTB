@@ -489,8 +489,8 @@ struct cuEventLine
 
     const CTuint* __restrict scannedEventTypeStartMask;
     const CTuint* __restrict scannedEventTypeEndMask;
-    const CTuint* __restrict eventTypeMaskSumsStart;
-    const CTuint* __restrict eventTypeMaskSumsEnd;
+//     const CTuint* __restrict eventTypeMaskSumsStart;
+//     const CTuint* __restrict eventTypeMaskSumsEnd;
 };
 
 struct EventLine
@@ -502,27 +502,31 @@ struct EventLine
     DoubleBuffer<CTuint> primId;
     DoubleBuffer<BBox> ranges;
 
-    nutty::DeviceBuffer<CTuint> scannedEventTypeStartMask;
+    nutty::Scanner typeStartScanner;
+    //nutty::Scanner typeEndScanner;
+    nutty::Scanner eventScanner;
+
+//     nutty::DeviceBuffer<CTuint> scannedEventTypeStartMask;
     nutty::DeviceBuffer<CTuint> scannedEventTypeEndMask;
-    nutty::DeviceBuffer<CTuint> eventTypeMaskSumsStart;
-    nutty::DeviceBuffer<CTuint> eventTypeMaskSumsEnd;
+//     nutty::DeviceBuffer<CTuint> eventTypeMaskSumsStart;
+//     nutty::DeviceBuffer<CTuint> eventTypeMaskSumsEnd;
 
     nutty::DeviceBuffer<CTuint> mask;
-    nutty::DeviceBuffer<CTuint> scannedMasks;
-    nutty::DeviceBuffer<CTuint> maskSums;
+//     nutty::DeviceBuffer<CTuint> scannedMasks;
+//     nutty::DeviceBuffer<CTuint> maskSums;
 
     CTbyte toggleIndex;
-    CTuint eventCount;
+    //CTuint eventCount;
 
     EventLine(void) : toggleIndex(0)
     {
 
     }
 
-    CTuint GetEventCount(void)
-    {
-        return eventCount;
-    }
+//     CTuint GetEventCount(void)
+//     {
+//         return eventCount;
+//     }
 
     void Resize(CTuint size)
     {
@@ -531,9 +535,14 @@ struct EventLine
             return;
         }
         
+        typeStartScanner.Resize(size);
+        //typeEndScanner.Resize(size);
+        scannedEventTypeEndMask.Resize(size);
+        eventScanner.Resize(size);
+
         mask.Resize(size);
-        scannedMasks.Resize(size);
-        maskSums.Resize(size);
+//         scannedMasks.Resize(size);
+//         maskSums.Resize(2048);
 
         indexedEvent.Resize(size);
         type.Resize(size);
@@ -542,10 +551,10 @@ struct EventLine
         primId.Resize(size);
         ranges.Resize(size);
 
-        scannedEventTypeStartMask.Resize(size);
-        scannedEventTypeEndMask.Resize(size);
-        eventTypeMaskSumsStart.Resize(size);
-        eventTypeMaskSumsEnd.Resize(size);
+//         scannedEventTypeStartMask.Resize(size);
+//         scannedEventTypeEndMask.Resize(size);
+//         eventTypeMaskSumsStart.Resize(2048);
+//         eventTypeMaskSumsEnd.Resize(2048);
     }
 
     size_t Size(void)
@@ -563,19 +572,19 @@ struct EventLine
         events.primId = primId.Begin(index)();
         events.ranges = ranges.Begin(index)();
 
-        events.scannedEventTypeStartMask = scannedEventTypeStartMask.Begin()();
+        events.scannedEventTypeStartMask = typeStartScanner.GetPrefixSum().Begin()();//scannedEventTypeStartMask.Begin()();
         events.scannedEventTypeEndMask = scannedEventTypeEndMask.Begin()();
-        events.eventTypeMaskSumsStart = eventTypeMaskSumsStart.Begin()();
-        events.eventTypeMaskSumsEnd = eventTypeMaskSumsEnd.Begin()();
+//         events.eventTypeMaskSumsStart = eventTypeMaskSumsStart.Begin()();
+//         events.eventTypeMaskSumsEnd = eventTypeMaskSumsEnd.Begin()();
 
         return events;
     }
 
-    void ScanEventTypes(void);
+    void ScanEventTypes(CTuint eventCount);
 
-    void ScanEvents(CTuint length);
+    void ScanEvents(CTuint eventCount);
 
-    void CompactClippedEvents(CTuint length);
+    void CompactClippedEvents(CTuint eventCount);
 
     void Toggle(void)
     {

@@ -360,7 +360,7 @@ struct NodeGPUDataTransformer
     }
 };
 
-double g_lastTreeBuildTime = 0;
+double g_lastTreeBuildTimeMillis = 0;
 void updateTree(ICTTree* tree, NodeGPUDataTransformer* gpuData)
 {
     chimera::util::HTimer loadTimer;
@@ -370,7 +370,7 @@ void updateTree(ICTTree* tree, NodeGPUDataTransformer* gpuData)
         loadTimer.Start();
         CT_SAFE_CALL(CTUpdate(tree));
         loadTimer.Stop();
-        g_lastTreeBuildTime = loadTimer.GetMillis();
+        g_lastTreeBuildTimeMillis = loadTimer.GetMillis();
         print("Building Tree took '%f' Seconds\n", loadTimer.GetSeconds());
     }    
 
@@ -730,10 +730,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     std::vector<GeoHandle> cubeHandles;
     chimera::util::cmRNG rng;
     CTuint addSum = 12*3;
-    int line = 2;
+    int line = 0;
     srand(0);
 
-    for(int i = 0; i < line; ++i)
+    for(int i = 0; i < line+1; ++i)
     {
         for(int j = 0; j < line; ++j)
         {
@@ -764,8 +764,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     }
 
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "Spiral_Caged.obj");
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj");
+    CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj",  &hhandle);
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "dragon.obj");
+    //cubeHandles.push_back(hhandle);
 
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
@@ -773,6 +774,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     uint vertexCount;
     CT_SAFE_CALL(CTGetPrimitiveCount(tree, &vertexCount));
     vertexCount *= 3;
+
+    print("Primitives: %d\n", vertexCount/3);
 
     NodeGPUDataTransformer* nodeGPUData = new NodeGPUDataTransformer();
 
@@ -942,16 +945,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             ss << "Nodes=" << (inc + lnc) << "\n";
             ss << "Leafes=" << lnc << "\n";
 
-            double fps = (int)((1000 / (double)traceTimer.GetMillis()));
+            double traceMillis = traceTimer.GetMillis();
 
-            double fps_all = (int)((1000 / (double)(traceTimer.GetMillis() + traverseTimer.GetMillis())));
+            double allMillis = (double)(traceMillis + traverseTimer.GetMillis());
             ss << twidth * theight << " Pixel\n";
             ss << RT_GetLastRayCount() << " Rays\n";
             ss << vertexCount/3 << " Primitives\n";
             //ss << (int)(1000.0 / (traverseTimer.GetMillis() == 0 ? 1 : traverseTimer.GetMillis())) << " FPS (Build)\n";
-            ss << fps << " FPS (Tracing)\n";
-            ss << (int)(1000 / g_lastTreeBuildTime) << " FPS (" << ((treeType == CT_CREATE_TREE_CPU) ? "CPU" : "GPU") << " Build)\n";
-            ss << fps_all << " FPS (Overall)";
+            ss << "Tracing: " << traceMillis <<" ms\n";
+            ss << ((treeType == CT_CREATE_TREE_CPU) ? "CPU" : "GPU") << " Building: " << g_lastTreeBuildTimeMillis << "\n";
+            ss << "Overall Time: " << allMillis << "\n";
 
             //             ss << "\n\nMirror=" << g_matToPrint->isMirror() << " (1)\n";
             //             ss << "Alpha=" << g_matToPrint->alpha() << " (2,3)\n";

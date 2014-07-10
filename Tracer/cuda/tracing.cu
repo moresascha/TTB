@@ -570,6 +570,7 @@ nutty::DeviceBuffer<Ray>* g_shadowRays[2];
 nutty::DeviceBuffer<uint>* g_shadowRayMask;
 
 nutty::DeviceBuffer<uint>* g_scannedRayMask;
+nutty::DeviceBuffer<uint>* g_scannedSums;
 nutty::DeviceBuffer<uint>* g_sums;
 
 dim3 g_grid;
@@ -621,6 +622,7 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_scannedRayMask = new nutty::DeviceBuffer<uint>();
     g_shadowRayMask = new nutty::DeviceBuffer<uint>();
     g_sums = new nutty::DeviceBuffer<uint>();
+    g_scannedSums = new nutty::DeviceBuffer<uint>();
 
     unsigned int maxRaysLastBranch = width * height * (1 << (MAX_RECURSION - 1));
     unsigned int maxRaysPerNode = width * height;
@@ -639,6 +641,7 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_shadowRayMask->Resize(maxRaysPerNode);
 
     g_sums->Resize((2 * maxRaysPerNode) / 512);
+    g_scannedSums->Resize((2 * maxRaysPerNode) / 512);
 
     RT_SetLightPos(make_float3(0,10,-10));
 }
@@ -659,6 +662,7 @@ extern "C" void RT_Destroy(void)
 
     delete g_scannedRayMask;
     delete g_sums;
+    delete g_scannedSums;
     delete g_shadowRayMask;
 }
 
@@ -685,7 +689,7 @@ uint compactRays(nutty::DeviceBuffer<uint>::iterator& maskBegin,
     nutty::ZeroMem(*g_scannedRayMask);
     nutty::ZeroMem(*g_sums);
 
-    nutty::ExclusivePrefixSumScan(maskBegin, maskBegin + rayCount, g_scannedRayMask->Begin(), g_sums->Begin());
+    nutty::ExclusivePrefixSumScan(maskBegin, maskBegin + rayCount, g_scannedRayMask->Begin(), g_sums->Begin(), g_scannedSums->Begin());
 
     nutty::Compact(rayDstBegin, raySrcBegin, raySrcBegin + rayCount, maskBegin, g_scannedRayMask->Begin(), 0U);
     auto it = g_scannedRayMask->Begin() + rayCount - 1;
