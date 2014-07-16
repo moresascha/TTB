@@ -52,8 +52,8 @@ extern "C" __device__ Real3 getSunPos(void)
     return g_sunPos;
 }
 
-#define COMPUTE_SHADOW
-#define COMPUTE_REFRACTION
+#undef COMPUTE_SHADOW
+#undef COMPUTE_REFRACTION
 #define RECURSION 2
 #define MAX_RECURSION 4
 #define RAY_WEIGHT_THRESHOLD 0.01

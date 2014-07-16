@@ -36,3 +36,15 @@ std::ostream& operator<<(std::ostream &out, const CTuint& t)
     out << (CTint)t;
     return out;
 }
+
+std::ostream& operator<<(std::ostream &out, const CTbyte3& t)
+{
+    out << "(" << (CTint)t.x << ", " << (CTint)t.y << ", " << (CTint)t.z << ") ";
+    return out;
+}
+
+std::ostream& operator<<(std::ostream &out, const CTuint3& t)
+{
+    out << "(" << (CTint)t.x << ", " << (CTint)t.y << ", " << (CTint)t.z << ") ";
+    return out;
+}

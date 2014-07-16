@@ -81,6 +81,9 @@ WPARAM g_key;
 bool g_isKeyDown = false;
 bool g_animateCamera = false;
 bool g_animateLight = !true;
+bool g_animateGeometry = true;
+bool g_makeKdTreeModel = false;
+float g_cameraDistance = 4;
 
 bool computeMovement(float dt)
 {
@@ -114,6 +117,14 @@ bool computeMovement(float dt)
     {
         g_cam.Move(0,delta,0);
     }
+    else if(g_key == KEY_N)
+    {
+        g_cameraDistance -= 0.1f;
+    }
+    else if(g_key == KEY_M)
+    {
+        g_cameraDistance += 0.1f;
+    }
 
     return true;
 }
@@ -145,11 +156,15 @@ void computeMaterialChange(void)
     {
         g_animateLight ^= 1;
     }
-//     else if(g_key == 97)
-//     {
-//         mat._mirror ^= 1;
-//     }
-// 
+    else if(g_key == KEY_P)
+    {
+        g_animateGeometry ^= 1;
+    }
+    else if(g_key == KEY_B)
+    {
+        g_makeKdTreeModel = true;
+    }
+
     if(g_key == KEY_K)
     {
         RT_IncDepth();
@@ -732,21 +747,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     CTuint addSum = 12*3;
     int line = 0;
     srand(0);
-
-    for(int i = 0; i < line+1; ++i)
+    float scale = 8;
+    for(int i = 0; i < line; ++i)
     {
         for(int j = 0; j < line; ++j)
         {
             for(int k = 0; k < line; ++k)
             {
-                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "ice_cube_small.obj", &hhandle); //"ice_cube_small.obj"
+                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "ice_cube_smallest.obj", &hhandle); //"ice_cube_small.obj"
                 CTuint sumcopy = addSum;
                 hhandle.start += addSum;
                 hhandle.end += addSum;
                 cubeHandles.push_back(hhandle);
                 addSum += (hhandle.end - hhandle.start);
                 //model.SetTranslation(rand() % 10,4,rand() % 10);
-                float scale = 4;
+                
                 float ox = rng.NextCubeFloat(2.1f);
                 float oy = rng.NextFloat(1.1f);
                 float oz = rng.NextCubeFloat(2.1f);
@@ -756,7 +771,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 //                 model.RotateY(dir * (0.5f*k/(float)line * line * line));
 //                 model.RotateZ(dir * (2*i/(float)(float)line * line * line));
 
-                model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
+                model.SetTranslation(-scale*(line/2) + scale * j, 7 + scale * i, -scale*(line/2) + scale * k);
                 model.Translate(ox, oy, oz);
                 CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
             }
@@ -764,10 +779,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     }
 
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "Spiral_Caged.obj");
-    CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj",  &hhandle);
+    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj",  &hhandle);
     //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "dragon.obj");
-    //cubeHandles.push_back(hhandle);
-
+    CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "bunny.obj");
+    
     nutty::DeviceBuffer<Normal> normalsSave(triGPUData->triNormals.Size());
     nutty::Copy(normalsSave.Begin(), triGPUData->triNormals.Begin(), triGPUData->triNormals.End());
 
@@ -852,7 +867,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             float time = timer.VGetTime() * 2 * 1e-4f;
             float dt = 1e-3f * timer.VGetLastMillis();
             static bool a = true;
-            if(a)
+            if(a && g_animateGeometry)
               {
                   int index = 0;
                   for(int i = 0; i < line; ++i)
@@ -866,8 +881,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                               model.SetRotateX(dir * (time + index/(float)cubeHandles.size()));
                               model.RotateY(dir * (time + 0.5f*index/(float)cubeHandles.size()));
                               model.RotateZ(dir * (time + 2*index/(float)(float)cubeHandles.size()));
-                              float scale = 4;
-                              model.SetTranslation(-scale*(line/2) + scale * j, 3 + scale * i, -scale*(line/2) + scale * k);
+ 
+                              chimera::util::Vec3 t(-scale*(line/2) + scale * j, 5 + scale * i, -scale*(line/2) + scale * k);
+
+                              chimera::util::Mat4 tm;
+                              tm.RotateY(dir * time);
+                              t = chimera::util::Mat4::Transform(tm, t);
+                              model.SetTranslation(t);
        
                               CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
 
@@ -876,7 +896,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                           }
                       }
                 }
-                cudaDeviceSynchronize();
+
                 traverseTimer.Start();
                 updateTree(tree, nodeGPUData);
                 traverseTimer.Stop();
@@ -900,11 +920,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             glUniformMatrix4fv(loc, 1, false, (float*)g_cam.GetIView());
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-//             if(a)
-//             {
-//                 debugLayer->ResetGeometry();
-//                 CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer));
-//             }
+
+            if(g_makeKdTreeModel)
+            {
+                debugLayer->ResetGeometry();
+                CT_SAFE_CALL(CTTreeDrawDebug(tree, debugLayer));
+                g_makeKdTreeModel = false;
+            }
+
             debugLayer->DrawGLGeo();
 
             glDisable(GL_BLEND);
@@ -953,8 +976,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             ss << vertexCount/3 << " Primitives\n";
             //ss << (int)(1000.0 / (traverseTimer.GetMillis() == 0 ? 1 : traverseTimer.GetMillis())) << " FPS (Build)\n";
             ss << "Tracing: " << traceMillis <<" ms\n";
-            ss << ((treeType == CT_CREATE_TREE_CPU) ? "CPU" : "GPU") << " Building: " << g_lastTreeBuildTimeMillis << "\n";
-            ss << "Overall Time: " << allMillis << "\n";
+            ss << ((treeType == CT_CREATE_TREE_CPU) ? "CPU" : "GPU") << " Building: " << g_lastTreeBuildTimeMillis << " ms\n";
+            ss << "Overall Time: " << allMillis << " ms\n";
 
             //             ss << "\n\nMirror=" << g_matToPrint->isMirror() << " (1)\n";
             //             ss << "Alpha=" << g_matToPrint->alpha() << " (2,3)\n";
@@ -1006,7 +1029,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                 lookAt.y = 3;
                 lookAt.z = 0;
 
-                v.Set(0, 4, -10);
+                v.Set(0, 4, -g_cameraDistance);
                 cameraMatrix.RotateY(-0.25*dt);
 
                 v = chimera::util::Mat4::Transform(cameraMatrix, v);

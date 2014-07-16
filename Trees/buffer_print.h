@@ -18,7 +18,14 @@ std::ostream& operator<<(std::ostream &out, const BBox& t);
 
 std::ostream& operator<<(std::ostream &out, const AABB& t);
 
+std::ostream& operator<<(std::ostream &out, const CTbyte3& t);
+
+std::ostream& operator<<(std::ostream &out, const CTuint3& t);
+
 std::ostream& operator<<(std::ostream &out, const CTbyte& t);
+
+#define PRINT_RAW_BUFFER(_name) \
+    PrintBuffer(_name);
 
 #define PRINT_BUFFER(_name) \
     OutputDebugStringA(#_name);\
@@ -38,7 +45,7 @@ void PrintBuffer(const Buffer& buffer, size_t max, const char* trim)
     std::stringstream ss;
     for(CTuint i = 0; i < min(max, buffer.Size()); ++i)
     {
-        ss << buffer[i] /*<< "[" << i << "]"*/  << " " << trim;
+        ss << buffer[i] << "[" << i << "]"  << " " << trim;
     }
     ss << "\n";
     OutputDebugStringA(ss.str().c_str());

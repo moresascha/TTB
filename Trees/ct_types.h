@@ -13,7 +13,12 @@ struct ICTTreeNode;
 
 struct float3;
 struct float2;
+struct uint3;
+struct char3;
+
 typedef unsigned char CTbyte;
+typedef char3 CTbyte3;
+typedef uint3 CTuint3;
 typedef float3 CTreal3;
 typedef float4 CTreal4;
 typedef float2 CTreal2;

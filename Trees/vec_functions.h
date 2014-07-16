@@ -66,7 +66,8 @@ __device__ __host__ __forceinline enum CT_SPLIT_AXIS getLongestAxis(const CTreal
     return m == v.x ? eCT_X : m == v.y ? eCT_Y : eCT_Z;
 }
 
-__device__ __host__ __forceinline float getAxis(const CTreal3& vec, CTbyte axis)
+template<typename T>
+__device__ __host__ __forceinline float getAxis(const T& vec, CTbyte axis)
 {
     switch(axis)
     {
@@ -89,7 +90,8 @@ __device__ __host__ __forceinline float getAxis(const CTreal4& vec, CTbyte axis)
     return 0;
 }
 
-__device__ __host__ __forceinline void setAxis(CTreal3& vec, CTbyte axis, CTreal v)
+template<typename T>
+__device__ __host__ __forceinline void setAxis(T& vec, CTbyte axis, CTreal v)
 {
     switch(axis)
     {
