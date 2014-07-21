@@ -134,6 +134,20 @@ public:
         m_slots = slots;
     }
 
+    void Resize(size_t slots)
+    {
+        if(slots <= m_slots)
+        {
+            return;
+        }
+        if(m_pPitchedHostMemory)
+        {
+            cudaFreeHost(m_pPitchedHostMemory);
+        }
+        cudaMallocHost(&m_pPitchedHostMemory, sizeof(T) * slots, 0);
+        m_slots = slots;
+    }
+
     void StartCopy(const T* devSrc, size_t slot, size_t range = 1)
     {
         cudaMemcpyAsync(m_pPitchedHostMemory + slot, devSrc, range * sizeof(T), cudaMemcpyDeviceToHost, m_pStream);
@@ -679,8 +693,7 @@ struct cuEventLine
     CTbyte* mask;
     CTuint* tmpType;
 
-    const CTuint* __restrict scannedEventTypeStartMask;
-    //const CTuint* __restrict scannedEventTypeEndMask;
+    const CTuint* __restrict scannedEventTypeEndMask;
 };
 
 struct EventLine
@@ -691,8 +704,10 @@ struct EventLine
     DoubleBuffer<BBox> ranges;
 
     nutty::Scanner typeStartScanner;
+    nutty::DeviceBuffer<CTuint> typeStartScanned;
     nutty::Scanner eventScanner;
     nutty::DeviceBuffer<CTuint> scannedEventTypeEndMask;
+    nutty::DeviceBuffer<CTuint> scannedEventTypeEndMaskSums;
     nutty::DeviceBuffer<CTbyte> mask;
 
     nutty::DeviceBuffer<CTuint> tmpType;
@@ -719,10 +734,11 @@ struct EventLine
         }
         size = (CTuint)(1.2 * size);
         tmpType.Resize(size);
-        typeStartScanner.Resize(size);
+        typeStartScanned.Resize(size);
         scannedEventTypeEndMask.Resize(size);
+        scannedEventTypeEndMaskSums.Resize(size);
         eventScanner.Resize(size);
-
+        typeStartScanner.Resize(size);
         mask.Resize(size);
 
         indexedEvent.Resize(size);
@@ -748,8 +764,8 @@ struct EventLine
         events.mask = mask.GetPointer();
 
         events.tmpType = tmpType.GetPointer();
-        events.scannedEventTypeStartMask = tmpType.GetPointer();
-        events.scannedEventTypeStartMask = typeStartScanner.GetPrefixSum().GetConstPointer();
+        //events.scannedEventTypeStartMask = typeStartScanner.GetPrefixSum().GetConstPointer();
+        events.scannedEventTypeEndMask = typeStartScanned.GetConstPointer();
         //events.scannedEventTypeEndMask = scannedEventTypeEndMask.Begin()();
 
         return events;
@@ -815,7 +831,6 @@ private:
     void ComputeSAH_Splits(
         CTuint nodeCount, 
         CTuint eventCount, 
-        const CTuint* hNodesContentCount, 
         const CTuint* nodesContentCount);
 
     CTuint CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint range);
@@ -880,6 +895,8 @@ private:
     nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
 
     nutty::cuStreamPool m_pool;
+
+    cuAsyncDtHCopy<CTuint> m_dthAsyncNodesContent;
 
     cuAsyncDtHCopy<CTuint> m_dthAsyncIntCopy;
     cuAsyncDtHCopy<CTbyte> m_dthAsyncByteCopy;

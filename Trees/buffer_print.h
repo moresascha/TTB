@@ -24,6 +24,10 @@ std::ostream& operator<<(std::ostream &out, const CTuint3& t);
 
 std::ostream& operator<<(std::ostream &out, const CTbyte& t);
 
+
+#define PRINT_RAW_BUFFER_N(_name, _length) \
+    PrintBuffer(_name, _length);
+
 #define PRINT_RAW_BUFFER(_name) \
     PrintBuffer(_name);
 

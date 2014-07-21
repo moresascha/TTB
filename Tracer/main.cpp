@@ -745,7 +745,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     std::vector<GeoHandle> cubeHandles;
     chimera::util::cmRNG rng;
     CTuint addSum = 12*3;
-    int line = 0;
+    int line =0;
     srand(0);
     float scale = 8;
     for(int i = 0; i < line; ++i)
