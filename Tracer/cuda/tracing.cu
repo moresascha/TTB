@@ -54,7 +54,7 @@ extern "C" __device__ Real3 getSunPos(void)
 
 #undef COMPUTE_SHADOW
 #undef COMPUTE_REFRACTION
-#define RECURSION 2
+#define RECURSION 1
 #define MAX_RECURSION 4
 #define RAY_WEIGHT_THRESHOLD 0.01
 
@@ -493,6 +493,247 @@ __global__ void _traceRays(
     }
 }
 
+template < 
+    uint width
+>
+__device__ int __2DblockScan(uint* sums, int value, uint threadId)
+{
+    int warp_id = threadId / warpSize;
+    int lane_id = threadId & (warpSize-1);
+#pragma unroll
+    for (uint i=1; i<width; i*=2)
+    {
+        int n = __shfl_up(value, i, width);
+
+        if (lane_id >= i) value += n;
+    }
+
+    // value now holds the scan value for the individual thread
+    // next sum the largest values for each warp
+
+    // write the sum of the warp to smem
+    if (threadId % warpSize == warpSize-1)
+    {
+        sums[warp_id] = value;
+    }
+
+    __syncthreads();
+
+    //
+    // scan sum the warp sums
+    // the same shfl scan operation, but performed on warp sums
+    //
+    if (warp_id == 0)
+    {
+        int warp_sum = sums[lane_id];
+
+        for (int i=1; i<width; i*=2)
+        {
+            int n = __shfl_up(warp_sum, i, width);
+
+            if (__laneid() >= i) warp_sum += n;
+        }
+
+        sums[lane_id] = warp_sum;
+    }
+
+    __syncthreads();
+
+    int blockSum = 0;
+
+    if (warp_id > 0)
+    {
+        blockSum = sums[warp_id-1];
+    }
+
+    value += blockSum;
+
+    return value;
+}
+
+template<uint blockSize>
+__global__ void __dpTraceRays(Ray* inputRays, float4* color, uint width, uint N, uint depth)
+{
+    __shared__ uint shrdScanned[blockSize];
+    
+    Ray r;
+
+    uint mask = 0;
+    if(threadIdx.x < N)
+    {
+        r = inputRays[threadIdx.x];
+
+        uint id = r.screenCoord.y * width + r.screenCoord.x;
+
+        TraceResult hitRes;
+        traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_back);
+        
+        if(hitRes.isHit)
+        {
+            Material mat = g_geometry.getMaterial(hitRes.triIndex); 
+
+            shade(hitRes, id, color, r, mat);
+
+            Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
+            Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
+
+            bool isTrans = mat.isTransp();
+            bool isMirror = mat.isMirror();
+
+            Real3 dir = r.getDir();
+            Real weight = r.rayWeight;
+
+            if(isMirror)
+            {
+                Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
+                Real3 reflection = reflect(r.getDir(), normal);
+                r.rayWeight = ratio * weight * mat.reflectivity();
+                r.setDir(reflection);
+                r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+                r.clampToBBox();
+                //addRay(newReflectionRays, rayIndex, r);
+                mask = 1;
+            }
+        }
+    }
+
+    if(depth == 1)
+    {
+        return;
+    }
+
+    __syncthreads();
+
+    uint sum = __2DblockScan<blockSize>(shrdScanned, mask, threadIdx.x);
+
+    __syncthreads();
+
+    if(mask)
+    {
+        inputRays[sum - mask] = r;
+    }
+
+     __syncthreads();
+
+    if(threadIdx.x == blockSize-1)
+    {
+        const uint block = blockSize;
+        __dpTraceRays<blockSize><<<1, blockSize>>>(inputRays, color, width, sum, depth+1);
+    }
+}
+
+template<uint blockSize>
+__global__ void _dpTraceRays(
+    float4* color,
+    Ray* rayMemory,
+//     RayPair newReflectionRays,
+//     RayPair newRefractionRays,
+//     RayPair newShadowRays,
+    float3 eye,
+    unsigned int width,
+    unsigned int height,
+    unsigned int N)
+{
+    uint idx = blockDim.x * blockIdx.x + threadIdx.x;
+    uint idy = blockDim.y * blockIdx.y + threadIdx.y;
+    uint id = idx + idy * blockDim.x * gridDim.x;
+
+    uint linearBlockThreadId = blockDim.x * threadIdx.y + threadIdx.x;
+    uint linearBlock = gridDim.x * blockIdx.y + blockIdx.x;
+
+    __shared__ uint shrdScanned[blockSize];
+
+    uint mask = 0;
+
+    Ray r;
+
+    color[id] = make_float4(0,0,0,0); //clear buffer
+
+    if(!(idx >= width || idy >= height))
+    {
+        Real u = (Real)idx / (Real)width;
+        Real v = (Real)idy / (Real)height;
+
+        Real aspect = (Real)width / (Real)height;
+
+        Real3 ray = normalize(make_real3(2 * u - 1, (2 * v - 1) / aspect, 1.0));
+
+        ray = transform3f(g_view, &ray);
+
+        Real min = 0, max = FLT_MAX;
+    
+        if(intersectP(eye, ray, BBOX_MIN, BBOX_MAX, &min, &max))
+        {
+            r.screenCoord.x = idx;
+            r.screenCoord.y = idy;
+    
+            r.dir_max.x = ray.x;
+            r.dir_max.y = ray.y;
+            r.dir_max.z = ray.z;
+
+            r.origin_min.x = eye.x;
+            r.origin_min.y = eye.y;
+            r.origin_min.z = eye.z;
+
+            r.setMin(min);
+            r.setMax(max);
+
+            r.rayWeight = 1;
+
+            //uint id = r.screenCoord.y * width + r.screenCoord.x;
+
+            TraceResult hitRes;
+            traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_back);
+
+            if(hitRes.isHit)
+            {
+                Material mat = g_geometry.getMaterial(hitRes.triIndex);
+                shade(hitRes, id, color, r, mat);
+
+                Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
+                Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
+
+                bool isTrans = mat.isTransp();
+                bool isMirror = mat.isMirror();
+
+                Real3 dir = r.getDir();
+                Real weight = r.rayWeight;
+
+                if(isMirror)
+                {
+                    Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
+                    Real3 reflection = reflect(r.getDir(), normal);
+                    r.rayWeight = ratio * weight * mat.reflectivity();
+                    r.setDir(reflection);
+                    r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+                    r.clampToBBox();
+                    //addRay(newReflectionRays, rayIndex, r);
+                    mask = 1;
+                }
+            }
+        }
+    }
+
+    __syncthreads();
+
+    uint sum = __2DblockScan<blockSize>(shrdScanned, mask, linearBlockThreadId);
+
+    __syncthreads();
+
+    if(mask)
+    {
+        rayMemory[linearBlock * blockSize + sum - mask] = r;
+    }
+
+     __syncthreads();
+
+    if(linearBlockThreadId == blockSize-1)
+    {
+        const uint block = blockSize;
+        __dpTraceRays<blockSize><<<1, blockSize>>>(rayMemory + linearBlock * blockSize, color, width, sum, 1);
+    }
+}
+
 __global__ void computeInitialRays(float4* color, Ray* rays, uint* rayMask, float3 eye, unsigned int width, unsigned int height, unsigned int N)
 {
     uint idx = blockDim.x * blockIdx.x + threadIdx.x;
@@ -573,6 +814,8 @@ nutty::DeviceBuffer<uint>* g_scannedRayMask;
 nutty::DeviceBuffer<uint>* g_scannedSums;
 nutty::DeviceBuffer<uint>* g_sums;
 
+nutty::DeviceBuffer<Ray>* g_blockRayMemory;
+
 dim3 g_grid;
 dim3 g_grp;
 int g_recDepth = RECURSION;
@@ -595,14 +838,14 @@ extern "C" void RT_SetViewPort(unsigned int width, unsigned int height)
     g_grid.z = 1;
 }
 
-extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N)
+extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N, cudaStream_t stream)
 {
     dim3 grid; dim3 group(256);
 
     grid.x = nutty::cuda::GetCudaGrid(N, group.x);
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_matrix, matrix, 4 * sizeof(Real4), 0, cudaMemcpyHostToDevice));
-    transform<<<grid, group>>>(normals + start, newNormals + start, N);
+    transform<<<grid, group, 0, stream>>>(normals + start, newNormals + start, N);
 }
 
 extern "C" void RT_Init(unsigned int width, unsigned int height)
@@ -623,6 +866,8 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_shadowRayMask = new nutty::DeviceBuffer<uint>();
     g_sums = new nutty::DeviceBuffer<uint>();
     g_scannedSums = new nutty::DeviceBuffer<uint>();
+
+    g_blockRayMemory = new nutty::DeviceBuffer<Ray>();
 
     unsigned int maxRaysLastBranch = width * height * (1 << (MAX_RECURSION - 1));
     unsigned int maxRaysPerNode = width * height;
@@ -664,6 +909,7 @@ extern "C" void RT_Destroy(void)
     delete g_sums;
     delete g_scannedSums;
     delete g_shadowRayMask;
+    delete g_blockRayMemory;
 }
 
 uint g_lastRays = 0;
@@ -701,8 +947,8 @@ void traceRays(float4* colors,
                uint lastRayCount,
                uint width, uint height)
 {
-    nutty::ZeroMem(*g_scannedRayMask);
-    nutty::ZeroMem(*g_sums);
+    //nutty::ZeroMem(*g_scannedRayMask);
+    //nutty::ZeroMem(*g_sums);
 
     byte toggle = 0;
     std::queue<RayRange> q[2];
@@ -807,19 +1053,40 @@ void traceRays(float4* colors,
 
 extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& bbox)
 {
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_view, view, 3 * sizeof(float3), 0, cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbolAsync(g_view, view, 3 * sizeof(float3), 0, cudaMemcpyHostToDevice));
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_bbox, &bbox, sizeof(BBox), 0, cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbolAsync(g_bbox, &bbox, sizeof(BBox), 0, cudaMemcpyHostToDevice));
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_bbox, &bbox, sizeof(BBox), 0, cudaMemcpyHostToDevice));
+    //nutty::ZeroMem(*g_rayMask);
 
-    nutty::ZeroMem(*g_rayMask);
+#if 1
 
     computeInitialRays<<<g_grid, g_grp>>>(colors, g_rays[0]->Begin()(), g_rayMask->Begin()(), eye, g_width, g_height, g_width * g_height);
 
     g_lastRays = 0;
-
+    
     traceRays(colors, g_recDepth, g_width * g_height, g_width, g_height);
+#else
+
+    const uint block = 256;
+    dim3 grp;
+    dim3 grid;
+    grp.x = 16;
+    grp.y = 16;
+    grp.z = 1;
+    
+    grid.x = nutty::cuda::GetCudaGrid(g_width, grp.x);
+    grid.y = nutty::cuda::GetCudaGrid(g_height, grp.y);
+    grid.z = 1;
+
+   // CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 1024));
+
+    g_blockRayMemory->Resize(block * (grid.y * grid.x));
+
+    _dpTraceRays<block><<<grid, grp>>>(colors, g_blockRayMemory->GetPointer(), eye, g_width, g_height, g_width * g_height);
+
+    DEVICE_SYNC_CHECK();
+#endif
 }
  
 extern "C" void RT_BindTree(TreeNodes& tree)

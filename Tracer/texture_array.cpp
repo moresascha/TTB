@@ -31,19 +31,32 @@ int cuTextureAtlas::AddTexture(uchar4* data, unsigned int width, unsigned int he
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMallocArray(&t.array, &desc, width, height));
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToArray(t.array, 0, 0, data, elementSize * (width * height), cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToArray(t.array, 0, 0, data, elementSize * width * height, cudaMemcpyHostToDevice));
+
+//     cudaExtent size;
+//     size.width = width;
+//     size.height = height;
+//     size.depth = 1;
+//     cudaMemcpy3DParms copyParams = {0};
+//     copyParams.srcPtr       = make_cudaPitchedPtr(data, width * sizeof(uchar4), width, height);
+//     copyParams.dstArray     = t.array;
+//     copyParams.extent       = size;
+//     copyParams.extent.depth = 1;
+//     copyParams.kind         = cudaMemcpyHostToDevice;
+//     cudaMemcpy3D(&copyParams);
 
 #ifdef KEPLER
     cudaResourceDesc resDesc;
     memset(&resDesc, 0, sizeof(resDesc));
     resDesc.resType = cudaResourceTypeArray;
+    memset(&resDesc.res, 0, sizeof(resDesc.res));
     resDesc.res.array.array = t.array;
 
     cudaTextureDesc texDesc;
     memset(&texDesc, 0, sizeof(texDesc));
     texDesc.addressMode[0] = cudaAddressModeWrap;
     texDesc.addressMode[1] = cudaAddressModeWrap;
-    texDesc.addressMode[3] = cudaAddressModeWrap;
+    texDesc.addressMode[2] = cudaAddressModeWrap;
     texDesc.filterMode = cudaFilterModeLinear;
     texDesc.normalizedCoords = 1;
     texDesc.readMode = cudaReadModeNormalizedFloat;
@@ -57,6 +70,16 @@ int cuTextureAtlas::AddTexture(uchar4* data, unsigned int width, unsigned int he
 
 int cuTextureAtlas::AddTexture(const char* file)
 {
+    for(int i = 0; i < m_textureNames.size(); ++i)
+    {
+        if(m_textureNames[i] == std::string(file))
+        {
+            return i;
+        }
+    }
+
+    m_textureNames.push_back(file);
+
     std::string _file = file;
     TextureData texData;
     if(_file.find(".jpg") != std::string::npos)

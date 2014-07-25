@@ -90,6 +90,9 @@
     <ClInclude Include="device_heap.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="kd_scan_kernel.h">
+      <Filter>Source Files\tree_imps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">
@@ -138,6 +141,9 @@
     </CudaCompile>
     <CudaCompile Include="device_heap.cu">
       <Filter>Source Files</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuKDTreeScan.cu">
+      <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>

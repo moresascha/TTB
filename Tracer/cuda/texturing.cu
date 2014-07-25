@@ -17,7 +17,7 @@ texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex7;
 extern "C" __device__ float4 readTexture(uint slot, const Real2& tc) 
 {
 #ifdef KEPLER
-    cudaTextureObject_t tex = g_textures[slot];
+    cudaTextureObject_t tex = g_textures[0];
     return tex2D<float4>(tex, tc.x, tc.y);
 #else
     if(slot == 0) return tex2D(g_tex0, tc.x, tc.y);
@@ -37,10 +37,12 @@ extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size)
 #ifdef KEPLER
     cudaTextureObject_t tex[8];
     memset(tex, 0, sizeof(cudaTextureObject_t) * 8);
+
     for(int i = 0; i < size; ++i)
     {
         tex[i] = textures[i].tex;
     }
+
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_textures, tex, size * sizeof(cudaTextureObject_t), 0, cudaMemcpyHostToDevice));
 #else
 

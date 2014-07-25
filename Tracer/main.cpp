@@ -36,6 +36,7 @@
 #include <chimera/util.h>
 
 #include "ct_runtime.h"
+#include "tree.h"
 
 #include "glTreeDebug.h"
 #include "input.h"
@@ -382,8 +383,12 @@ void updateTree(ICTTree* tree, NodeGPUDataTransformer* gpuData)
 
     {
         print("Building Tree ...\n");
+        cudaDeviceSynchronize();
+        //cudaStreamSynchronize(tree->GetStream());
         loadTimer.Start();
         CT_SAFE_CALL(CTUpdate(tree));
+        //cudaStreamSynchronize(tree->GetStream());
+        cudaDeviceSynchronize();
         loadTimer.Stop();
         g_lastTreeBuildTimeMillis = loadTimer.GetMillis();
         print("Building Tree took '%f' Seconds\n", loadTimer.GetSeconds());
@@ -631,7 +636,7 @@ void createTestTree(CTuint type)
     std::vector<GeoHandle> cubeHandles;
 
     chimera::util::Mat4 model;
-    CTuint addSum = 12*3;
+    CTuint addSum = 0;//12*3;
     uint c = 16;
     for(int i = 0; i < c; ++i)
     {
@@ -745,16 +750,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     std::vector<GeoHandle> cubeHandles;
     chimera::util::cmRNG rng;
     CTuint addSum = 12*3;
-    int line =0;
+    int line = 2;
     srand(0);
-    float scale = 8;
+    float scale = 4;
     for(int i = 0; i < line; ++i)
     {
         for(int j = 0; j < line; ++j)
         {
             for(int k = 0; k < line; ++k)
             {
-                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "ice_cube_smallest.obj", &hhandle); //"ice_cube_small.obj"
+                CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "ecos.obj", &hhandle); //"ice_cube_small.obj"
                 CTuint sumcopy = addSum;
                 hhandle.start += addSum;
                 hhandle.end += addSum;
@@ -851,6 +856,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     timer.VReset();
     chimera::util::Vec3 v;
 
+    uint frame = 315;
+    uint timeStep = 16;
+    uint stepTime = frame * timeStep;
+    bool useRealTime = true;
+    //g_animateGeometry = false;
     while(1)
     {
         if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -864,37 +874,56 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
         } 
         else 
         { 
-            float time = timer.VGetTime() * 2 * 1e-4f;
+            float time;
+            
+            if(useRealTime)
+            {
+                time = timer.VGetTime() * 2 * 1e-4f;
+            }
+            else
+            {
+                time = 2 * 1e-3f * stepTime;
+            }
+
             float dt = 1e-3f * timer.VGetLastMillis();
             static bool a = true;
+
+            if(g_animateGeometry)
+            {
+                stepTime += timeStep;
+                frame++;
+            }
+
             if(a && g_animateGeometry)
-              {
-                  int index = 0;
-                  for(int i = 0; i < line; ++i)
-                  {
-                      for(int j = 0; j < line; ++j)
-                      {
-                          for(int k = 0; k < line; ++k)
-                          {
-                              GeoHandle hhandle = cubeHandles[index];
-                              float dir = -1 + 2 * (index % 2);
-                              model.SetRotateX(dir * (time + index/(float)cubeHandles.size()));
-                              model.RotateY(dir * (time + 0.5f*index/(float)cubeHandles.size()));
-                              model.RotateZ(dir * (time + 2*index/(float)(float)cubeHandles.size()));
- 
-                              chimera::util::Vec3 t(-scale*(line/2) + scale * j, 5 + scale * i, -scale*(line/2) + scale * k);
+            {
+                int index = 0;
 
-                              chimera::util::Mat4 tm;
-                              tm.RotateY(dir * time);
-                              t = chimera::util::Mat4::Transform(tm, t);
-                              model.SetTranslation(t);
-       
-                              CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+                for(int i = 0; i < line; ++i)
+                {
+                    for(int j = 0; j < line; ++j)
+                    {
+                        for(int k = 0; k < line; ++k)
+                        {
+                            GeoHandle hhandle = cubeHandles[index];
+                            float dir = -1 + 2 * (index % 2);
+                            model.SetRotateX(dir * (time + index/(float)cubeHandles.size()));
+                            model.RotateY(dir * (time + 0.5f*index/(float)cubeHandles.size()));
+                            model.RotateZ(dir * (time + 2*index/(float)(float)cubeHandles.size()));
 
-                              RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start));
-                              index++;
-                          }
-                      }
+                            chimera::util::Vec3 t(-scale*(line/2) + scale * j - 3, 5 + scale * i, -scale*(line/2) + scale * k - 3);
+
+                            chimera::util::Mat4 tm;
+                            tm.RotateY(dir * time);
+                            t = chimera::util::Mat4::Transform(tm, t);
+                            model.SetTranslation(t);
+
+                            chimera::util::Mat4 identity;
+
+                            CT_SAFE_CALL(CTTransformGeometryHandle(tree, hhandle.handle, (CTreal4*)model.m_m.m));
+                            RT_TransformNormals(normalsSave.Begin()(), tris.normals, (CTreal4*)model.m_m.m, hhandle.start, (hhandle.end - hhandle.start), tree->GetStream());
+                            index++;
+                        }
+                    }
                 }
 
                 traverseTimer.Start();
@@ -907,7 +936,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
                     CT_SAFE_CALL(CTGetRawLinearMemory(tree, &cnt, &memory));
                     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(tris.positions, memory, cnt, cudaMemcpyHostToDevice));
                 }
-                //cudaDeviceSynchronize();
+
+                cudaStreamSynchronize(tree->GetStream());
             }
   
             computeMovement(dt);
@@ -950,6 +980,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             bbox.addPoint(aabb->GetMin());
             bbox.addPoint(aabb->GetMax());
 
+            CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSynchronize());
             traceTimer.Start();
             RT_Trace(mappedPtr, g_cam.GetView(), g_cam.GetEye(), bbox);
 
@@ -971,6 +1002,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             double traceMillis = traceTimer.GetMillis();
 
             double allMillis = (double)(traceMillis + traverseTimer.GetMillis());
+            ss << "Frame: " << frame << "\n";
             ss << twidth * theight << " Pixel\n";
             ss << RT_GetLastRayCount() << " Rays\n";
             ss << vertexCount/3 << " Primitives\n";

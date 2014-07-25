@@ -11,7 +11,7 @@
 #define SUN_POS getSunPos()
 #define BBOX_MAX getBBox()._max
 #define BBOX_MIN getBBox()._min
-#undef KEPLER
+#define KEPLER
 
 extern "C" __device__ Real3 getSunPos(void);
 

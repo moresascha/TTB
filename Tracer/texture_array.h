@@ -1,6 +1,7 @@
 #pragma once
 #include <cutil_inline.h>
 #include "cuda/globals.cuh"
+#include <vector>
 struct cuTextureObj
 {
     cudaArray_t array;
@@ -18,6 +19,8 @@ private:
     cuTextureObj* m_detailTextures;
     int m_entries;
     int m_size;
+
+    std::vector<std::string> m_textureNames;
 
     void Resize(void);
 

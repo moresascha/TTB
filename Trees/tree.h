@@ -1,6 +1,7 @@
 #pragma once
 #include "ct.h"
 #include <float.h>
+#include <driver_types.h>
 
 class ICTTree : public ICTInterface
 {
@@ -18,6 +19,8 @@ public:
     virtual CT_RESULT AddGeometry(ICTGeometry* geo, CTGeometryHandle* handle) = 0;
 
     virtual void SetDepth(CTbyte depth) = 0;
+
+    virtual cudaStream_t GetStream(void) { return NULL; }
 
     virtual CTuint GetDepth(void) const = 0;
 

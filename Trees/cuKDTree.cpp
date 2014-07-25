@@ -11,6 +11,7 @@
 
 cuKDTree::cuKDTree(void): m_depth(0xFF), m_initialized(false)
 {
+    m_pStream = m_stream();
 }
 
 CT_RESULT cuKDTree::Init(CTuint flags)
@@ -137,7 +138,7 @@ void cuKDTree::TransformGeometry(CTGeometryHandle handle, const CTreal4* matrix)
     if(it != m_handleRangeMap.end())
     {
         GeometryRange range = it->second;
-        cudaTransformVector(m_orginalVertices.Begin() + range.start, m_currentTransformedVertices.Begin() + range.start, matrix, range.end - range.start);
+        cudaTransformVector(m_orginalVertices.Begin() + range.start, m_currentTransformedVertices.Begin() + range.start, matrix, range.end - range.start, m_pStream);
     }
 }
 

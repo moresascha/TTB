@@ -36,13 +36,14 @@ __global__ void __transform3f(const CTreal3* in, CTreal3* out, uint N)
     out[id] = transform4f(g__matrix, &v);
 }
 
-extern "C" void cudaTransformVector(nutty::DeviceBuffer<CTreal3>::iterator& v_in, nutty::DeviceBuffer<CTreal3>::iterator& v_out, const CTreal4* matrix, CTuint N)
+extern "C" void cudaTransformVector(
+    nutty::DeviceBuffer<CTreal3>::iterator& v_in, nutty::DeviceBuffer<CTreal3>::iterator& v_out, const CTreal4* matrix, CTuint N, cudaStream_t pStream)
 {
-    dim3 grid; dim3 group(64);
+   dim3 grid; dim3 group(64);
 
     grid.x = nutty::cuda::GetCudaGrid(N, group.x);
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g__matrix, matrix, 4 * sizeof(CTreal4), 0, cudaMemcpyHostToDevice));
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbolAsync(g__matrix, matrix, 4 * sizeof(CTreal4), 0, cudaMemcpyHostToDevice, pStream));
 
-    __transform3f<<<grid, group>>>(v_in(), v_out(), N);
+    __transform3f<<<grid, group, 0, pStream>>>(v_in(), v_out(), N);
 }

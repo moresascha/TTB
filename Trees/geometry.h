@@ -23,7 +23,7 @@ public:
 
 //Implementations
 
-#define BB_EPSILON 1e-4f
+#define BB_EPSILON 1e-6
 
 class AABB : public ICTAABB
 {
@@ -178,21 +178,21 @@ struct _AABB
     CTreal3 m_min;
     CTreal3 m_max;
 
-    __device__ __host__ _AABB(void)
-    {
-        Reset();
-    }
+//     __host__ __device__ _AABB(void)
+//     {
+//         Reset();
+//     }
+// 
+//     __device__ __host__ _AABB(const _AABB& aabb)
+//     {
+//         m_min = aabb.m_min;
+//         m_max = aabb.m_max;
+//     }
 
-    __device__ __host__ _AABB(const _AABB& aabb)
-    {
-        m_min = aabb.m_min;
-        m_max = aabb.m_max;
-    }
-
-    __device__ __host__ ~_AABB(void)
-    {
-
-    }
+//     __device__ __host__ ~_AABB(void)
+//     {
+// 
+//     }
 
     __device__ __host__  void Reset(void)
     {

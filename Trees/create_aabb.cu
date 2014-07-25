@@ -50,14 +50,14 @@ __global__ void _createAABB(CTreal3* tris, _AABB* aabbs, CTuint N)
     aabbs[idx] = bb;
 }
 
-extern "C" void cudaCreateTriangleAABBs(CTreal3* tris, _AABB* aabbs, CTuint N)
+extern "C" void cudaCreateTriangleAABBs(CTreal3* tris, _AABB* aabbs, CTuint N, cudaStream_t pStream)
 {
     dim3 grps(256);
     dim3 grid;
 
     grid.x = nutty::cuda::GetCudaGrid(N, grps.x);
 
-    _createAABB<<<grid, grps>>>(tris, aabbs, N);
+    _createAABB<<<grid, grps, 0, pStream>>>(tris, aabbs, N);
 }
 
 struct AABB_OP
@@ -78,6 +78,7 @@ struct AABB_OP
 
 extern "C" void cudaGetSceneBBox(nutty::DeviceBuffer<_AABB>& aabbs, CTuint N, _AABB& aabb)
 {
-    nutty::Reduce(aabbs.Begin(), aabbs.End(), AABB_OP(), _AABB());
-    aabb = aabbs[0];
+    throw "Error";
+    //nutty::Reduce(aabbs.Begin(), aabbs.End(), AABB_OP(), _AABB());
+    //aabb = aabbs[0];
 }

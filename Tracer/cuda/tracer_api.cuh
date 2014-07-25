@@ -20,7 +20,7 @@ extern "C" void RT_SetViewPort(unsigned int width, unsigned int height);
 
 extern "C" void RT_BindGeometry(Triangles& triangles);
 
-extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N);
+extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* matrix, size_t start, uint N, cudaStream_t stream = NULL);
 
 extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size);
 

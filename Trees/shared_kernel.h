@@ -7,14 +7,14 @@
 
 struct _AABB;
 
-extern "C" void cudaCreateTriangleAABBs(CTreal3* tris, _AABB* aabbs, CTuint N);
+extern "C" void cudaCreateTriangleAABBs(CTreal3* tris, _AABB* aabbs, CTuint N, cudaStream_t pStream = NULL);
 
-extern "C" void cudaGetSceneBBox(nutty::DeviceBuffer<_AABB>& aabbs, CTuint N, _AABB& aabb);
+//extern "C" void cudaGetSceneBBox(nutty::DeviceBuffer<_AABB>& aabbs, CTuint N, _AABB& aabb);
 
 extern "C" void cudaTransformVector
     (
     nutty::DeviceBuffer<CTreal3>::iterator& v_in, 
     nutty::DeviceBuffer<CTreal3>::iterator& v_out, 
     const CTreal4* matrix, 
-    CTuint N
-    );
+    CTuint N,
+    cudaStream_t pStream = NULL);

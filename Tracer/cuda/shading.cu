@@ -22,6 +22,11 @@ __device__ void debugShadeNormal(const TraceResult& result, uint id, float4* col
     color[id] = 0.5 + 0.5 * make_float4(n.x, n.y, n.z, 0);
 }
 
+__device__ void red(const TraceResult& result, uint id, float4* color, const Ray& r, const Material& mats)
+{
+    color[id] = make_float4(1,0,0,0);
+}
+
 __device__ void phongShade(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
 {
     Real3 normal = getGeometry().getTrianglelNormal(result.triIndex, result.bary);
@@ -46,7 +51,7 @@ __device__ void phongShade(const TraceResult& result, uint id, float4* color, co
     color[id].z = color[id].z * (1 - ray.rayWeight) + c.z;
 }
 
-__constant__ Shader g_shaderPtr[3] = {&phongShade, &debugShadeNormal, &debugShadeTC};
+__constant__ Shader g_shaderPtr[4] = {&phongShade, &debugShadeNormal, &debugShadeTC, &red};
 
 extern "C" __device__ void shade(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
 {
