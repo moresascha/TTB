@@ -11,6 +11,29 @@
 #undef DYNAMIC_PARALLELISM
 #endif
 
+template <CTbyte hasLeaves>
+__global__ void setActiveNodesMask(
+    CTuint* ids,
+    const CTnodeIsLeaf_t* __restrict isLeaf,
+    const CTuint* __restrict prefixSum,
+    CTuint nodeOffset,
+    CTuint N
+    )
+{
+    RETURN_IF_OOB(N);
+
+    if(hasLeaves)
+    {
+        if(!isLeaf[nodeOffset + id])
+        {
+            ids[prefixSum[id]] = id;
+        }
+    }
+    else
+    {
+        ids[id] = id;
+    }
+}
 
 template <typename T>
 __global__ void makeInverseScan(const T* __restrict scanVals, T* dst, CTuint N)
@@ -31,16 +54,33 @@ struct tmp1
     CTuint* dst[3];
 };
 
+#define DP_VERSION
+
+#ifdef DP_VERSION
+#define CUDA_CONSTANT_ __device__
+#else
+#define CUDA_CONSTANT_ __constant__
+#endif
+
+
 /*__constant__ cuEventLineTriple g_eventTripleDst;
 __constant__ cuEventLineTriple g_eventTripleSrc; */
-__constant__ cuEventLineTriple g_eventTriples[2];
+CUDA_CONSTANT_ cuEventLineTriple g_eventTriples[2]; //src-dst
 
-__constant__ cuConstEventLineTriple g_eventSrcTriples;
-__constant__ cuConstEventLineTriple g_eventDstTriples;
+CUDA_CONSTANT_ cuConstEventLineTriple g_eventSrcTriples;
+CUDA_CONSTANT_ cuConstEventLineTriple g_eventDstTriples;
 
-__constant__ Split g_splits;
-__constant__ SplitConst g_splitsConst;
-__constant__ Node g_nodes;
+CUDA_CONSTANT_ Split g_splits;
+CUDA_CONSTANT_ SplitConst g_splitsConst;
+CUDA_CONSTANT_ Node g_nodes;
+
+CUDA_CONSTANT_ cuClipMaskArray g_clipArray;
+struct Sums
+{
+    const CTuint* __restrict prefixSum[3];
+};
+
+CUDA_CONSTANT_ cuConstClipMask cms[3];
 
 /*__constant__ CTbyte g_eventSrcIndex;
 __constant__ CTbyte g_eventDstIndex;*/
@@ -63,13 +103,13 @@ __global__ void makeInverseScanN(tmp0 scanVals, tmp1 dst, CTuint N)
 
 __global__ void makeOthers(const CTuint* nodesContentScanned, const CTuint* __restrict interiorScannedContent, CTuint* leafContentScanned, 
                            
-                           const CTuint* __restrict scanVals, CTuint* dst,
+                           const CTuint* __restrict leafCountScanned, CTuint* interiorCountScanned,
 
                            CTuint N)
 {
     RETURN_IF_OOB(N);
 
-    dst[id] = id - scanVals[id];
+    interiorCountScanned[id] = id - leafCountScanned[id];
     leafContentScanned[id] = nodesContentScanned[id] - interiorScannedContent[id];
 }
 
@@ -81,7 +121,7 @@ __global__ void reorderEvent3(
     RETURN_IF_OOB(N);
 
     #pragma unroll
-    for(CTbyte a = 0; a < 3; ++a)
+    for(CTaxis_t a = 0; a < 3; ++a)
     {
         CTuint srcIndex = g_eventTriples[0].lines[a].indexedEvent[id].index;
         
@@ -89,7 +129,7 @@ __global__ void reorderEvent3(
 
         g_eventTriples[1].lines[a].type[id] = g_eventTriples[0].lines[a].type[srcIndex];
 
-        g_eventTriples[1].lines[a].nodeIndex[id] = g_eventTriples[0].lines[a].nodeIndex[srcIndex];
+        g_eventTriples[1].lines[a].nodeIndex[id] = 0;//g_eventTriples[0].lines[a].nodeIndex[srcIndex];
 
         g_eventTriples[1].lines[a].primId[id] = g_eventTriples[0].lines[a].primId[srcIndex];
 
@@ -102,9 +142,9 @@ __global__ void createEventsAndInit3(
     const BBox* __restrict primAxisAlignedBB,
     const BBox* __restrict sceneBBox,
 
-    CTuint* activeNodesIsLeaf,
+    CTuint* activeNodes,
     CTuint* nodeToLeafIndex,
-    CTbyte* nodeIsLeaf,
+    CTnodeIsLeaf_t* nodeIsLeaf,
     CTuint* nodesContentCount,
     BBox* nodesBBox,
 
@@ -121,7 +161,7 @@ __global__ void createEventsAndInit3(
     if(useFOR)
     {
         #pragma unroll
-        for(CTbyte a = 0; a < 3; ++a)
+        for(CTaxis_t a = 0; a < 3; ++a)
         {
             g_eventTriples[0].lines[a].type[start_index] = EVENT_START;
             g_eventTriples[0].lines[a].type[end_index] = EDGE_END;
@@ -145,7 +185,8 @@ __global__ void createEventsAndInit3(
 
     if(threadIdx.x == 0)
     {
-        activeNodesIsLeaf[0] = 0;
+        g_nodes.contentStart[0] = 0;
+        activeNodes[0] = 0;
         nodeToLeafIndex[0] = 0;
         nodesBBox[0] = sceneBBox[0];
         nodesContentCount[0] = N;
@@ -164,13 +205,13 @@ __global__ void computeSAHSplits3Old(
 
     CTuint nodeIndex;
     BBox bbox;
-    CTbyte axis;
+    CTaxis_t axis;
     CTreal r = -1;
 
     EVENT_TRIPLE_HEADER_SRC;
 
 #pragma unroll
-    for(CTbyte i = 0; i < 3; ++i)
+    for(CTaxis_t i = 0; i < 3; ++i)
     {
         CTuint ni = eventsSrc.lines[i].nodeIndex[id];
         BBox _bbox = nodesBBoxes[ni];
@@ -184,7 +225,7 @@ __global__ void computeSAHSplits3Old(
         }
     }
 
-    CTbyte type = eventsSrc.lines[axis].type[id];
+    CTeventType_t type = eventsSrc.lines[axis].type[id];
 
     CTreal split = eventsSrc.lines[axis].indexedEvent[id].v;
 
@@ -240,7 +281,7 @@ __global__ void computeSAHSplits3(
 
         if(idx >= N)
         {
-            cache[i].nodeIndex = -1;
+            cache[i].nodeIndex = -1U;
             break;
         }
 
@@ -253,7 +294,7 @@ __global__ void computeSAHSplits3(
 #pragma unroll
     for(CTuint i = 0; i < elemsPerThread; ++i)
     {
-        if(cache[i].nodeIndex != -1)
+        if(cache[i].nodeIndex != -1U)
         {
             cache[i].bbox = nodesBBoxes[cache[i].nodeIndex];
 
@@ -285,9 +326,9 @@ __global__ void computeSAHSplits3(
 
         if(LONGEST_AXIS)
         {
-            CTbyte axis = (CTbyte)getLongestAxis(cache[i].bbox.m_max - cache[i].bbox.m_min);
+            CTaxis_t axis = (CTaxis_t)getLongestAxis(cache[i].bbox.m_max - cache[i].bbox.m_min);
 
-            CTbyte type = eventsSrc.lines[axis].type[idx];
+            CTeventType_t type = eventsSrc.lines[axis].type[idx];
 
             CTreal split = eventsSrc.lines[axis].indexedEvent[idx].v;
 
@@ -336,7 +377,7 @@ __global__ void computeSAHSplits3(
     } */
 }
 
-__device__ __forceinline bool isIn(BBox& bbox, CTbyte axis, CTreal v)
+__device__ __forceinline bool isIn(BBox& bbox, CTaxis_t axis, CTreal v)
 {
     return getAxis(bbox.GetMin(), axis) <= v && v <= getAxis(bbox.GetMax(), axis);
 }
@@ -370,7 +411,7 @@ __global__ void clipEventsNT(
 
     id = E_PER_THREAD * id;
 
-    CTbyte axis = id / eventsPerAxisN;
+    CTaxis_t axis = id / eventsPerAxisN;
 
     id = id % eventsPerAxisN;
 
@@ -391,11 +432,11 @@ __global__ void clipEventsNT(
             CTuint nodeIndex = src.lines[0].nodeIndex[i];
             CTuint eventsLeftFromMe = 2 * nodeContentStart[nodeIndex];
             IndexedSAHSplit isplit = g_splitsConst.indexedSplit[eventsLeftFromMe];
-            CTbyte splitAxis = g_splitsConst.axis[isplit.index];
+            CTaxis_t splitAxis = g_splitsConst.axis[isplit.index];
             CTreal split = g_splitsConst.v[isplit.index];
             BBox bbox = src.lines[axis].ranges[i];
             CTreal v = src.lines[axis].indexedEvent[i].v;    
-            CTbyte type = src.lines[axis].type[i];
+            CTeventType_t type = src.lines[axis].type[i];
 
             CTuint N = eventsLeftFromMe + 2 * nodeContentCount[nodeIndex];
 
@@ -456,7 +497,7 @@ __global__ void clipEvents(
     CTuint* mask,
     const CTuint* __restrict nodeContentStart,
     const CTuint* __restrict nodeContentCount,
-    CTbyte myAxis,
+    CTaxis_t myAxis,
     CTuint eventCount)
 {
     RETURN_IF_OOB(eventCount);
@@ -466,13 +507,13 @@ __global__ void clipEvents(
 
     IndexedSAHSplit isplit = g_splitsConst.indexedSplit[eventsLeftFromMe];
     
-    CTbyte splitAxis = g_splitsConst.axis[isplit.index];
+    CTaxis_t splitAxis = g_splitsConst.axis[isplit.index];
 
     BBox bbox = src.ranges[id];
 
     CTreal v = src.indexedEvent[id].v;
     CTreal split = g_splitsConst.v[isplit.index];
-    CTbyte type = src.type[id];
+    CTeventType_t type = src.type[id];
 
     CTuint N = eventsLeftFromMe + 2 * nodeContentCount[nodeIndex];
 
@@ -540,16 +581,16 @@ __global__ void clipEvents3(
     CTuint nodeIndex = eventsSrc.lines[0].nodeIndex[id];
     CTuint eventsLeftFromMe = 2 * nodeContentStart[nodeIndex];
     IndexedSAHSplit isplit = g_splitsConst.indexedSplit[eventsLeftFromMe];
-    CTbyte splitAxis = g_splitsConst.axis[isplit.index];
+    CTaxis_t splitAxis = g_splitsConst.axis[isplit.index];
     CTreal split = g_splitsConst.v[isplit.index];
     CTuint N = eventsLeftFromMe + 2 * nodeContentCount[nodeIndex];
 
     #pragma unroll
-    for(CTbyte axis = 0; axis < 3; ++axis)
+    for(CTaxis_t axis = 0; axis < 3; ++axis)
     {
         BBox bbox = eventsSrc.lines[axis].ranges[id];
         CTreal v = eventsSrc.lines[axis].indexedEvent[id].v;    
-        CTbyte type = eventsSrc.lines[axis].type[id];
+        CTeventType_t type = eventsSrc.lines[axis].type[id];
 
         CTreal minAxis = getAxis(bbox.m_min, splitAxis);
         CTreal maxAxis = getAxis(bbox.m_max, splitAxis);
@@ -604,27 +645,26 @@ __global__ void clipEvents3(
     }
 }
 
-__global__ void clearMasks(CTbyte* a, CTbyte* b, CTbyte* c, CTuint N)
-{
-    RETURN_IF_OOB(N);
-    a[id] = 0;
-    b[id] = 0;
-    c[id] = 0;
-}
-
-__global__ void clearMasks3(CTbyte3* a, CTuint N)
-{
-    RETURN_IF_OOB(N);
-    CTbyte3 v = {0};
-    a[id] = v;
-}
-__constant__ cuClipMaskArray g_clipArray;
+// __global__ void clearMasks(CTbyte* a, CTbyte* b, CTbyte* c, CTuint N)
+// {
+//     RETURN_IF_OOB(N);
+//     a[id] = 0;
+//     b[id] = 0;
+//     c[id] = 0;
+// }
+// 
+// __global__ void clearMasks3(CTbyte3* a, CTuint N)
+// {
+//     RETURN_IF_OOB(N);
+//     CTbyte3 v = {0};
+//     a[id] = v;
+// }
 
 __global__ void createClipMask(
     const CTuint* __restrict nodeContentStart,
     const CTuint* __restrict nodeContentCount,
     CTuint count,
-    CTbyte srcIndex)
+    CTbyte srcIndex, CTuint d = 0)
 {
     RETURN_IF_OOB(count);
     EVENT_TRIPLE_HEADER_SRC;
@@ -632,12 +672,13 @@ __global__ void createClipMask(
     CTuint nodeIndex = eventsSrc.lines[0].nodeIndex[id];
     CTuint eventsLeftFromMe = 2 * nodeContentStart[nodeIndex];
     IndexedSAHSplit isplit = g_splitsConst.indexedSplit[eventsLeftFromMe];
-    CTbyte splitAxis = g_splitsConst.axis[isplit.index];
+
+    CTaxis_t splitAxis = g_splitsConst.axis[isplit.index];
     CTreal split = g_splitsConst.v[isplit.index];
     CTuint N = eventsLeftFromMe + 2 * nodeContentCount[nodeIndex];
 
-    CTbyte maskLeft[3] = {0};
-    CTbyte maskRight[3] = {0};
+    CTclipMask_t maskLeft[3] = {0};
+    CTclipMask_t maskRight[3] = {0};
     cuClipMask cms[3];
 
     cms[0] = g_clipArray.mask[0];
@@ -645,13 +686,13 @@ __global__ void createClipMask(
     cms[2] = g_clipArray.mask[2];
     
 #pragma unroll
-    for(CTbyte axis = 0; axis < 3; ++axis)
+    for(CTaxis_t axis = 0; axis < 3; ++axis)
     {
         const cuEventLine& __restrict srcLine = eventsSrc.lines[axis];
 
         BBox& bbox = srcLine.ranges[id];
         CTreal v = srcLine.indexedEvent[id].v;    
-        CTbyte type = srcLine.type[id];
+        CTaxis_t type = srcLine.type[id];
 
         CTreal minAxis = getAxis(bbox.m_min, splitAxis);
         CTreal maxAxis = getAxis(bbox.m_max, splitAxis);
@@ -681,7 +722,7 @@ __global__ void createClipMask(
             cms[axis].newSplit[eventsLeftFromMe + id] = split;
             cms[axis].index[eventsLeftFromMe + id] = id;
 
-            CTbyte mar = 0;
+            //CTbyte mar = 0;
             //both
             setLeft(maskLeft[axis]);
             setAxis(maskLeft[axis], splitAxis);
@@ -708,19 +749,12 @@ __global__ void createClipMask(
     }
 
 #pragma unroll
-    for(CTbyte axis = 0; axis < 3; ++axis)
+    for(CTaxis_t axis = 0; axis < 3; ++axis)
     {
         cms[axis].mask[eventsLeftFromMe + id] = maskLeft[axis];
         cms[axis].mask[N + id] = maskRight[axis];
     }
 }
-
-struct Sums
-{
-    const CTuint* __restrict prefixSum[3];
-};
-
-__constant__ cuConstClipMask cms[3];
 
 __global__ void compactEventLineV2(
     CTuint N,
@@ -741,7 +775,7 @@ __global__ void compactEventLineV2(
     }
 
     #pragma unroll
-    for(CTbyte i = 0; i < 3; ++i)
+    for(CTaxis_t i = 0; i < 3; ++i)
     {
         if(isSet(masks[i]))
         {
@@ -752,9 +786,9 @@ __global__ void compactEventLineV2(
             IndexedEvent e = eventsSrc.lines[i].indexedEvent[eventIndex];
             BBox bbox = eventsSrc.lines[i].ranges[eventIndex];
             CTuint primId = eventsSrc.lines[i].primId[eventIndex];
-            CTbyte type = eventsSrc.lines[i].type[eventIndex];
+            CTeventType_t type = eventsSrc.lines[i].type[eventIndex];
 
-            CTbyte splitAxis = getAxisFromMask(masks[i]);
+            CTaxis_t splitAxis = getAxisFromMask(masks[i]);
             bool right = isRight(masks[i]);
 
             CTuint nnodeIndex;
@@ -796,7 +830,7 @@ __global__ void compactEventLine3(
     EVENT_TRIPLE_HEADER_SRC;
     EVENT_TRIPLE_HEADER_DST;
     #pragma unroll
-    for(CTbyte i = 0; i < 3; ++i)
+    for(CTaxis_t i = 0; i < 3; ++i)
     {
         if(eventsSrc.lines[i].mask[id])
         {
@@ -822,12 +856,12 @@ __global__ void initInteriorNodes(
     CTuint* contenCount,
     CTuint* newContentCount,
     CTuint* newActiveNodes,
-    CTbyte* activeNodesIsLeaf,
+    CTnodeIsLeaf_t* activeNodesIsLeaf,
     CTuint childOffset,
     CTuint nodeOffset,
     CTuint N,
     CTuint* oldNodeContentStart,
-    CTbyte* gotLeaves,
+    CTnodeIsLeaf_t* gotLeaves,
     CTbyte makeLeaves,
     CTbyte _gotLeafes)
 {
@@ -845,11 +879,11 @@ __global__ void initInteriorNodes(
 
     CTuint an = activeNodes[id];
     CTuint edgesBeforeMe = 2 * oldNodeContentStart[can];
-    CTuint eventOffset = 2 * contenCount[can];
+//    CTuint eventOffset = 2 * contenCount[can];
 
     IndexedSAHSplit split = g_splitsConst.indexedSplit[edgesBeforeMe];
 
-    CTbyte axis = g_splitsConst.axis[split.index];
+    CTaxis_t axis = g_splitsConst.axis[split.index];
     CTreal scanned = g_splitsConst.v[split.index];
 
 #if 0
@@ -919,8 +953,8 @@ __global__ void initInteriorNodes(
 }
 
 __global__ void setEventsBelongToLeafAndSetNodeIndex(
-    const CTbyte* __restrict isLeaf,
-    CTbyte* eventIsLeaf,
+    const CTnodeIsLeaf_t* __restrict isLeaf,
+    CTeventIsLeaf_t* eventIsLeaf,
     CTuint* nodeToLeafIndex,
     CTuint N,
     CTuint N2,
@@ -935,7 +969,7 @@ __global__ void setEventsBelongToLeafAndSetNodeIndex(
 
     if(id < N2)
     {
-        nodeToLeafIndex[id] = 0;
+       nodeToLeafIndex[id] = 0;
     }
 }
 
@@ -943,7 +977,7 @@ __global__ void compactLeafData(
     CTuint* leafContent,
     const CTuint* __restrict leafContentCount,
     const CTuint* __restrict leafContentStart, 
-    const CTbyte* __restrict eventIsLeafMask, 
+    const CTeventIsLeaf_t* __restrict eventIsLeafMask, 
     const CTuint* __restrict leafEventScanned,
     CTuint currentLeafCount,
     CTbyte srcIndex,
@@ -967,24 +1001,25 @@ __global__ void compactLeafData(
 struct TmpcuEventLine
 {
     IndexedEvent indexedEvent;
-    CTbyte type;
+    CTeventType_t type;
     CTuint nodeIndex;
     CTuint primId;
     BBox ranges;
-    CTbyte mask;
+    CTeventMask_t mask;
 };
 
+template<CTuint packNodes>
 __global__ void compactMakeLeavesData(
-    const CTbyte* __restrict activeNodeIsLeaf,
-    const CTuint* __restrict interiorCountScanned,
-    const CTuint* __restrict scannedLeafContent,
+    const CTnodeIsLeaf_t* __restrict activeNodeIsLeaf,
+    //const CTuint* __restrict interiorCountScanned,
+    //const CTuint* __restrict scannedLeafContent,
+    const CTuint* __restrict nodesContentScanned,
     const CTuint* __restrict leafEventScanned,
 
     const CTuint* __restrict nodesContentCount,
-    const CTbyte* __restrict eventIsLeafMask,
+    const CTeventIsLeaf_t* __restrict eventIsLeafMask,
 
     const CTuint* __restrict leafCountScan, 
-    const CTuint* __restrict interiorCountScan,
 
     const CTuint* __restrict activeNodes,
     const CTuint* __restrict isLeafScan,
@@ -1006,7 +1041,8 @@ __global__ void compactMakeLeavesData(
     CTuint currentLeafCount,
     CTuint nodeCount,
     CTbyte srcIndex,
-    CTuint N)
+    CTuint N,
+    CTuint d = 0)
 {
     RETURN_IF_OOB(N);
     EVENT_TRIPLE_HEADER_SRC;
@@ -1016,11 +1052,12 @@ __global__ void compactMakeLeavesData(
 
     if(!activeNodeIsLeaf[oldNodeIndex])
     {
-        CTuint eventsBeforeMe = 2 * scannedLeafContent[oldNodeIndex];
-        CTuint nodeIndex = interiorCountScanned[oldNodeIndex];
+        
+        CTuint eventsBeforeMe = 2 * (nodesContentScanned[oldNodeIndex] - scannedInteriorContent[oldNodeIndex]);//scannedLeafContent[oldNodeIndex];
+        CTuint nodeIndex = oldNodeIndex - leafCountScan[oldNodeIndex]; //interiorCountScanned[oldNodeIndex];
 
         eventsDst.lines[0].nodeIndex[id - eventsBeforeMe] = nodeIndex;
-
+                
         TmpcuEventLine lines[3];
         lines[0].indexedEvent = eventsSrc.lines[0].indexedEvent[id];
         lines[1].indexedEvent = eventsSrc.lines[1].indexedEvent[id];
@@ -1039,38 +1076,42 @@ __global__ void compactMakeLeavesData(
         lines[2].type = eventsSrc.lines[2].type[id];
 
         #pragma unroll
-        for(CTbyte i = 0; i < 3; ++i)
+        for(CTaxis_t i = 0; i < 3; ++i)
         {
             //const cuEventLine& __restrict srcLine = eventsSrc.lines[i];
             cuEventLine& dstLine = eventsDst.lines[i];
+                    
             dstLine.indexedEvent[id - eventsBeforeMe] = lines[i].indexedEvent;
             dstLine.primId[id - eventsBeforeMe] = lines[i].primId;
             dstLine.ranges[id - eventsBeforeMe] = lines[i].ranges;
             dstLine.type[id - eventsBeforeMe] = lines[i].type;
-        }
+        }            
     }
     else if(eventIsLeafMask[id])
     {
         leafContent[leafContentStartOffset + leafEventScanned[id]] = eventsSrc.lines[0].primId[id];
     }
 
-    if(id < nodeCount)
+    if(packNodes)
     {
-        CTbyte leafMask = activeNodeIsLeaf[id];
-        CTuint dst = leafCountScan[id];
-        if(leafMask && leafMask < 2)
+        if(id < nodeCount)
         {
-            leafContentStart[currentLeafCount + dst] = leafContentStartOffset + scannedLeafContent[id];
-            leafContentCount[currentLeafCount + dst] = nodesContentCount[id];
-            nodeToLeafIndex[activeNodes[id] + offset] = currentLeafCount + isLeafScan[id];
-        }
-        else
-        {
-            CTuint dst = interiorCountScan[id];
-            newActiveNodes[dst] = activeNodes[id];
-            newContentCount[dst] = nodesContentCount[id];
-            newContentStart[dst] = scannedInteriorContent[id];
-            newBBxes[dst] = nodeBBoxes[id];
+            CTnodeIsLeaf_t leafMask = activeNodeIsLeaf[id];
+            CTuint dst = leafCountScan[id];
+            if(leafMask && leafMask < 2)
+            {
+                leafContentStart[currentLeafCount + dst] = leafContentStartOffset + (nodesContentScanned[id] - scannedInteriorContent[id]); //scannedLeafContent[id];
+                leafContentCount[currentLeafCount + dst] = nodesContentCount[id];
+                nodeToLeafIndex[activeNodes[id] + offset] = currentLeafCount + isLeafScan[id];
+            }
+            else
+            {
+                dst = id - dst;//leafCountScan[id]; //interiorCountScanned[id];
+                newActiveNodes[dst] = activeNodes[id];
+                newContentCount[dst] = nodesContentCount[id];
+                newContentStart[dst] = scannedInteriorContent[id];
+                newBBxes[dst] = nodeBBoxes[id];
+            }
         }
     }
 }
@@ -1086,13 +1127,13 @@ __global__ void make3AxisType(CTbyte3* dst, cuEventLineTriple events, CTuint N)
 }
 
 __global__ void createInteriorContentCountMasks(
-    const CTbyte* __restrict isLeaf,
+    const CTnodeIsLeaf_t* __restrict isLeaf,
     const CTuint* __restrict contentCount,
     CTuint* interiorMask,
     CTuint N)
 {
     RETURN_IF_OOB(N);
-    CTbyte mask = isLeaf[id];
+    CTnodeIsLeaf_t mask = isLeaf[id];
     interiorMask[id] = (mask < 2) * (1 ^ mask) * contentCount[id];
 }
 
@@ -1160,8 +1201,13 @@ __global__ void segReduce(IndexedSAHSplit* splits, CTuint N, CTuint eventCount)
     __shared__ CTuint segOffset;
     __shared__ CTuint segLength;
 
-    segOffset = 2 * g_nodes.contentStart[blockIdx.x];
-    segLength= 2 * g_nodes.contentCount[blockIdx.x];
+    if(threadIdx.x == 0)
+    {
+        segOffset = 2 * g_nodes.contentStart[blockIdx.x];
+        segLength= 2 * g_nodes.contentCount[blockIdx.x];
+    }
+
+    __syncthreads();
 
     __shared__ IndexedSAHSplit sdata[blockSize];
 
@@ -1552,7 +1598,7 @@ __global__ void segScanN(ConstTuple g_data, Tuple scanned, Tuple sums, Operator 
 #pragma unroll
     for(CTuint i = 0; i < numLines; ++i)
     {
-        CTbyte elem = op(op.GetNeutral());
+        CTuint elem = op(op.GetNeutral());
 
         if(gpos < N)
         {
@@ -1738,10 +1784,10 @@ template <int width, typename Operator>
 __global__ void shfl_scan_perblock(const CTbyte* __restrict data, CTuint* scanned, CTuint* g_sums, Operator op, CTuint N)
 {
     __shared__ CTuint sums[width];
-    CTuint id = ((blockIdx.x * blockDim.x) + threadIdx.x);
-    CTuint lane_id = id % warpSize;
+     CTuint id = ((blockIdx.x * blockDim.x) + threadIdx.x);
+//     CTuint lane_id = id % warpSize;
     // determine a warp_id within a block
-    CTuint warp_id = threadIdx.x / warpSize;
+//    CTuint warp_id = threadIdx.x / warpSize;
 
     // Below is the basic structure of using a shfl instruction
     // for a scan.
@@ -1767,117 +1813,5 @@ __global__ void shfl_scan_perblock(const CTbyte* __restrict data, CTuint* scanne
     if(threadIdx.x == blockDim.x-1)
     {
         g_sums[blockIdx.x] = value;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-__global__ void testcompactMakeLeavesData(
-    const CTbyte* __restrict activeNodeIsLeaf,
-    const CTuint* __restrict interiorCountScanned,
-    const CTuint* __restrict scannedLeafContent,
-    const CTuint* __restrict leafEventScanned,
-
-    const CTuint* __restrict nodesContentCount,
-    const CTbyte* __restrict eventIsLeafMask,
-
-    const CTuint* __restrict leafCountScan, 
-    const CTuint* __restrict interiorCountScan,
-
-    const CTuint* __restrict activeNodes,
-    const CTuint* __restrict isLeafScan,
-    const CTuint* __restrict scannedInteriorContent,
-    const BBox* __restrict nodeBBoxes,
-
-    CTuint* leafContent,
-
-    CTuint* nodeToLeafIndex,
-    CTuint* newContentCount,
-    CTuint* newContentStart,
-    CTuint* leafContentStart, 
-    CTuint* leafContentCount,
-    CTuint* newActiveNodes,
-    BBox* newBBxes,
-
-    CTuint offset,
-    CTuint leafContentStartOffset,
-    CTuint currentLeafCount,
-    CTuint nodeCount,
-    CTbyte srcIndex,
-    CTuint N)
-{
-    RETURN_IF_OOB(N);
-    EVENT_TRIPLE_HEADER_SRC;
-    EVENT_TRIPLE_HEADER_DST;
-
-    CTuint oldNodeIndex = eventsSrc.lines[0].nodeIndex[id];
-
-    if(!activeNodeIsLeaf[oldNodeIndex])
-    {
-        CTuint eventsBeforeMe = 2 * scannedLeafContent[oldNodeIndex];
-        CTuint nodeIndex = interiorCountScanned[oldNodeIndex];
-
-        eventsDst.lines[0].nodeIndex[id - eventsBeforeMe] = nodeIndex;
-
-        TmpcuEventLine lines[3];
-        lines[0].indexedEvent = eventsSrc.lines[0].indexedEvent[id];
-        lines[1].indexedEvent = eventsSrc.lines[1].indexedEvent[id];
-        lines[2].indexedEvent = eventsSrc.lines[2].indexedEvent[id];
-
-        lines[0].primId = eventsSrc.lines[0].primId[id];
-        lines[1].primId = eventsSrc.lines[1].primId[id];
-        lines[2].primId = eventsSrc.lines[2].primId[id];
-
-        lines[0].ranges = eventsSrc.lines[0].ranges[id];
-        lines[1].ranges = eventsSrc.lines[1].ranges[id];
-        lines[2].ranges = eventsSrc.lines[2].ranges[id];
-
-        lines[0].type = eventsSrc.lines[0].type[id];
-        lines[1].type = eventsSrc.lines[1].type[id];
-        lines[2].type = eventsSrc.lines[2].type[id];
-
-#pragma unroll
-        for(CTbyte i = 0; i < 3; ++i)
-        {
-            //const cuEventLine& __restrict srcLine = eventsSrc.lines[i];
-//             cuEventLine& dstLine = eventsDst.lines[i];
-//             dstLine.indexedEvent[id - eventsBeforeMe] = lines[i].indexedEvent;
-//             dstLine.primId[id - eventsBeforeMe] = lines[i].primId;
-//             dstLine.ranges[id - eventsBeforeMe] = lines[i].ranges;
-//             dstLine.type[id - eventsBeforeMe] = lines[i].type;
-        }
-    }
-    else if(eventIsLeafMask[id])
-    {
-      // leafContent[leafContentStartOffset + leafEventScanned[id]] = eventsSrc.lines[0].primId[id];
-    }
-
-    if(id < nodeCount)
-    {
-        CTbyte leafMask = activeNodeIsLeaf[id];
-        CTuint dst = leafCountScan[id];
-        if(leafMask && leafMask < 2)
-        {
-            leafContentStart[currentLeafCount + dst] = leafContentStartOffset + scannedLeafContent[id];
-            leafContentCount[currentLeafCount + dst] = nodesContentCount[id];
-            nodeToLeafIndex[activeNodes[id] + offset] = currentLeafCount + isLeafScan[id];
-        }
-        else
-        {
-            CTuint dst = interiorCountScan[id];
-            newActiveNodes[dst] = activeNodes[id];
-            newContentCount[dst] = nodesContentCount[id];
-            newContentStart[dst] = scannedInteriorContent[id];
-            newBBxes[dst] = nodeBBoxes[id];
-        }
     }
 }

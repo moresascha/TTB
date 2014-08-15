@@ -3,6 +3,111 @@
 #define NUTTY_DEBUG
 #endif
 
+class cuKDTreeBitonicSearch : public cuKDTree
+{
+private:
+    void ClearBuffer(void);
+    void GrowPrimitiveEventMemory(void);
+    void GrowNodeMemory(void);
+    void GrowPerLevelNodeMemory(CTuint newSize);
+    void InitBuffer(void);
+
+    void PrintStatus(const char* msg = NULL);
+
+    void ValidateTree(void);
+
+    void ComputeSAH_Splits(
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        const CTuint* hNodesContentCount, 
+        const CTuint* nodesContentCount, 
+        const CTbyte* isLeaf,
+        NodeContent nodesContent);
+
+    CTuint CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin, CTuint nodeOffset, CTuint range);
+
+    MakeLeavesResult MakeLeaves(
+        nutty::DeviceBuffer<CTbyte>::iterator& isLeafBegin,
+        CTuint g_nodeOffset, 
+        CTuint nodeOffset, 
+        CTuint nodeCount, 
+        CTuint primitiveCount, 
+        CTuint currentLeafCount, 
+        CTuint leafContentOffset,
+        CTuint initNodeToLeafIndex);
+
+    nutty::DeviceBuffer<CTuint> m_edgeMask;
+    nutty::DeviceBuffer<CTuint> m_scannedEdgeMask;
+    nutty::DeviceBuffer<CTuint> m_edgeMaskSums;
+
+    nutty::HostBuffer<CTuint> m_hNodesContentCount;
+
+    Split m_splits;
+    nutty::DeviceBuffer<IndexedSAHSplit> m_splits_IndexedSplit;
+    nutty::DeviceBuffer<CTreal> m_splits_Plane;
+    nutty::DeviceBuffer<CTbyte> m_splits_Axis;
+    nutty::DeviceBuffer<CTuint> m_splits_Above;
+    nutty::DeviceBuffer<CTuint> m_splits_Below;
+
+    Event m_events[2];
+    nutty::DeviceBuffer<IndexedEvent> m_events_IndexedEdge;
+    DoubleBuffer<CTbyte> m_events_Type;
+    DoubleBuffer<CTuint> m_events_NodeIndex;
+    DoubleBuffer<CTuint> m_events_PrimId;
+    DoubleBuffer<CTuint> m_events_PrefixSum;
+
+    nutty::DeviceBuffer<CTuint> m_scannedEventTypeStartMask;
+    nutty::DeviceBuffer<CTuint> m_scannedEventTypeEndMask;
+    nutty::DeviceBuffer<CTuint> m_eventTypeMaskSums;
+
+    NodeContent m_nodesContent;
+    nutty::DeviceBuffer<CTuint> m_primIndex;
+    nutty::DeviceBuffer<CTuint> m_primNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_primPrefixSum;
+    nutty::DeviceBuffer<CTbyte> m_primIsLeaf;
+
+    nutty::Scanner m_primIsLeafScanner;
+    nutty::Scanner m_primIsNoLeafScanner;
+    nutty::Scanner m_leafCountScanner;
+    nutty::Scanner m_interiorCountScanner;
+    nutty::Scanner m_interiorContentScanner;
+    nutty::Scanner m_leafContentScanner;
+
+    nutty::DeviceBuffer<CTuint> m_maskedInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_maskedleafContent;
+
+    nutty::DeviceBuffer<CTuint> m_lastNodeContentStartAdd;
+
+    nutty::DeviceBuffer<CTuint> m_activeNodesThisLevel;
+    nutty::DeviceBuffer<CTuint> m_activeNodes;
+    nutty::DeviceBuffer<CTuint> m_newActiveNodes;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeaf;
+    nutty::DeviceBuffer<CTbyte> m_activeNodesIsLeafCompacted;
+
+    DoubleBuffer<BBox> m_nodesBBox;
+
+    nutty::DeviceBuffer<CTuint> m_newInteriorContent;
+    nutty::DeviceBuffer<CTuint> m_newPrimNodeIndex;
+    nutty::DeviceBuffer<CTuint> m_newPrimPrefixSum;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentCount;
+    nutty::DeviceBuffer<CTuint> m_newNodesContentStartAdd;
+
+    nutty::cuStreamPool m_pool;
+public:
+    cuKDTreeBitonicSearch(void)
+    {
+    }
+
+    CT_RESULT Update(void);
+
+    ~cuKDTreeBitonicSearch(void)
+    {
+
+    }
+
+    add_uuid_header(cuKDTreeBitonicSearch);
+};
+
 #include <chimera/Timer.h>
 #include "cuKDTree.h"
 #include "kd_kernel.h"

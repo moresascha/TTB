@@ -25,6 +25,11 @@ CT_EXPORT const char* CT_API CTGetErrorString
         DebugOut(", "); \
         DebugOut(__FILE__); \
         DebugOut(" "); \
+        char ____lineBuffer[64]; \
+        _itoa_s(__LINE__, ____lineBuffer, 64, 10); \
+        DebugOut("Line:"); \
+        DebugOut(____lineBuffer); \
+        DebugOut(" "); \
         DebugOut(#call); \
         DebugOut("\n"); \
         exit(-1); \

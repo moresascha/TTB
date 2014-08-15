@@ -107,7 +107,7 @@ CT_EXPORT CT_RESULT CT_API CTTransformGeometryHandle
 
 CT_EXPORT CT_RESULT CT_API CTTreeDrawDebug
     (
-    const ICTTree* tree,
+    ICTTree* tree,
     ICTTreeDebugLayer* debugger
     );
 

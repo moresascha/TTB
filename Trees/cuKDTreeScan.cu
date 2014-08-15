@@ -1,4 +1,3 @@
-
 #ifdef _DEBUG
 #define NUTTY_DEBUG
 #endif
@@ -6,18 +5,20 @@
 #undef NUTTY_DEBUG
 
 #include <cutil_math.h>
+
 #include "cuKDTree.h"
-#include "kd_kernel.h"
+
+#if 1
 #include "kd_scan_kernel.h"
 #include "shared_kernel.h"
 #include "shared_types.h"
 #include <Reduce.h>
+
 #include <Sort.h>
 #include <Scan.h>
 #include <queue>
 #include <ForEach.h>
 #include <Fill.h>
-#include <Functions.h>
 #include <cuda/Globals.cuh>
 #include "buffer_print.h"
 #include <chimera/Timer.h>
@@ -81,7 +82,7 @@ struct ShrdMemory<CTuint3>
 #define PROFILE_END
 #endif
 
-#undef PRINT_OUT
+#define PRINT_OUT
 #ifndef _DEBUG
 #undef PRINT_OUT
 #endif
@@ -99,167 +100,6 @@ struct ShrdMemory<CTuint3>
 #define PRINT_RAW_BUFFER_N(_name, _N)
 #define ct_printf(...)
 #endif
-
-template<>
-struct ShrdMemory<IndexedSAHSplit>
-{
-    __device__ IndexedSAHSplit* Ptr(void) 
-    { 
-        extern __device__ __shared__ IndexedSAHSplit s_split[];
-        return s_split;
-    }
-};
-
-template<>
-struct ShrdMemory<BBox>
-{
-    __device__ BBox* Ptr(void) 
-    { 
-        extern __device__ __shared__ BBox s_bbox[];
-        return s_bbox;
-    }
-};
-
-template<>
-struct ShrdMemory<IndexedEvent>
-{
-    __device__ IndexedEvent* Ptr(void) 
-    { 
-        extern __device__ __shared__ IndexedEvent s_edge[];
-        return s_edge;
-    }
-};
-
-struct AxisSort
-{
-    char axis;
-    AxisSort(char a) : axis(a)
-    {
-
-    }
-    __device__ __host__ char operator()(const CTreal3& f0, const CTreal3& f1)
-    {
-        return getAxis(f0, axis) > getAxis(f1, axis);
-    }
-};
-
-struct float3min
-{
-    __device__ float3 operator()(const float3& t0, const float3& t1)
-    {
-        float3 r;
-        r.x = nutty::binary::Min<float>()(t0.x, t1.x);
-        r.y = nutty::binary::Min<float>()(t0.y, t1.y);
-        r.z = nutty::binary::Min<float>()(t0.z, t1.z);
-        return r;
-    }
-};
-
-struct float3max
-{
-    __device__  float3 operator()(const float3& t0, const float3& t1)
-    {
-        float3 r;
-        r.x = nutty::binary::Max<float>()(t0.x, t1.x);
-        r.y = nutty::binary::Max<float>()(t0.y, t1.y);
-        r.z = nutty::binary::Max<float>()(t0.z, t1.z);
-        return r;
-    }
-};
-
-struct ReduceBBox
-{
-    __device__  BBox operator()(const BBox& t0, const BBox& t1)
-    {
-        BBox bbox;
-        bbox.m_min = fminf(t0.m_min, t1.m_min);
-        bbox.m_max = fmaxf(t0.m_max, t1.m_max);
-        return bbox;
-    }
-};
-
-template <
-    typename T
->
-struct InvTypeOp
-{
-    __device__ T operator()(T elem)
-    {
-        return (elem < 2) * (elem ^ 1);
-    }
-
-    T GetNeutral(void)
-    {
-        return 0;
-    }
-};
-
-template <
-    typename T
->
-struct TypeOp
-{
-    __device__ CTuint operator()(T elem)
-    {
-        return (elem < 2) * elem;
-    }
-
-    __device__ __host__ CTuint GetNeutral(void)
-    {
-        return 0;
-    }
-};
-
-template <
-    typename T
->
-struct EventStartScanOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem ^ 1;
-    }
-
-    __device__ __host__ T GetNeutral(void)
-    {
-        return 1;
-    }
-};
-
-struct ScanByte3
-{
-    __device__ CTuint3 operator()(CTbyte3 elem)
-    {
-        CTuint3 v;
-        v.x = elem.x ^ 1;
-        v.y = elem.y ^ 1;
-        v.z = elem.z ^ 1;
-        return v;
-    }
-
-    __device__ __host__ CTbyte3 GetNeutral(void)
-    {
-        CTbyte3 v;
-        v.x = 1; v.y = 1; v.z = 1;
-        return v;
-    }
-};
-
-template <
-    typename T
->
-struct EventEndScanOp
-{
-    __device__ T operator()(T elem)
-    {
-        return elem;
-    }
-
-    T GetNeutral(void)
-    {
-        return 0;
-    }
-};
 
 double g_time = 0;
 
@@ -329,7 +169,7 @@ void ScanBinaryTriples(ConstTuple<3, T>& src, Tuple<3, CTuint>& scanned, Tuple<3
 
 void cuKDTreeScan::InitBuffer(void)
 {
-    CTuint primitiveCount = m_orginalVertices.Size() / 3;
+    CTuint primitiveCount = (CTuint)(m_orginalVertices.Size() / 3);
 
     m_depth = (byte)min(64, max(1, (m_depth == 0xFF ? GenerateDepth(primitiveCount) : m_depth)));
 
@@ -463,7 +303,7 @@ void cuKDTreeScan::ScanEventTypesTriples(CTuint eventCount)
 {
     CTbyte add = m_eventLines.toggleIndex;
 
-    ConstTuple<3, CTbyte> ptr;
+    ConstTuple<3, CTeventType_t> ptr;
     ptr.ts[0] = m_eventLines.eventLines[0].type[add].GetConstPointer();
     ptr.ts[1] = m_eventLines.eventLines[1].type[add].GetConstPointer();
     ptr.ts[2] = m_eventLines.eventLines[2].type[add].GetConstPointer();
@@ -478,7 +318,7 @@ void cuKDTreeScan::ScanEventTypesTriples(CTuint eventCount)
     sums.ts[1] = m_eventLines.eventLines[1].scannedEventTypeEndMaskSums.GetPointer();
     sums.ts[2] = m_eventLines.eventLines[2].scannedEventTypeEndMaskSums.GetPointer();
 
-    nutty::PrefixSumOp<CTbyte> op;
+    nutty::PrefixSumOp<CTeventType_t> op;
     ScanBinaryTriples(ptr, ptr1, sums, eventCount, op, m_pStream); 
 }
 
@@ -493,8 +333,8 @@ void cuKDTreeScan::ComputeSAH_Splits(
     CTuint start = 0;
 
     //m_pool.Reset();
-    m_typeScanner.Resize(eventCount);
-    m_types3.Resize(eventCount);
+    //m_typeScanner.Resize(eventCount);
+    //m_types3.Resize(eventCount);
     
 #if 0
      for(CTbyte i = 0; i < 3; ++i)
@@ -556,8 +396,8 @@ void cuKDTreeScan::ComputeSAH_Splits(
 
     computeSAHSplits3<1, elemsPerThread><<<sahGrid, sahBlock, 0, m_pStream>>>(
         nodesContentCount,
-        m_nodes_ContentStartAdd.Begin()(),
-        m_nodesBBox[0].Begin()(),
+        m_nodes_ContentStartAdd.GetConstPointer(),
+        m_nodesBBox[0].GetConstPointer(),
         eventCount,
         m_eventLines.toggleIndex);
 
@@ -610,7 +450,8 @@ void cuKDTreeScan::ComputeSAH_Splits(
         {
             const CTuint blockSize = 512U;
             CTuint N = nodeCount * blockSize;
-            CTuint reduceGrid = nutty::cuda::GetCudaGrid(N, blockSize);
+            CTuint reduceGrid = nodeCount;//nutty::cuda::GetCudaGrid(N, blockSize);
+            
             //cudaErrorBuffer errorBuffer;
 
             segReduce<blockSize><<<reduceGrid, blockSize, 0, m_pStream>>>(m_splits_IndexedSplit.GetPointer(), N, eventCount);
@@ -670,7 +511,7 @@ void cuKDTreeScan::ComputeSAH_Splits(
         m_hNodesContentCount.Resize(nodeCount);
         nutty::Copy(m_hNodesContentCount.Begin(), m_nodes_ContentCount.Begin(), nodeCount);
 
-        for(int i = 0; i < nodeCount; ++i)
+        for(CTuint i = 0; i < nodeCount; ++i)
         {
             CTuint cc = m_hNodesContentCount[i];
             CTuint length = 2 * cc;
@@ -773,16 +614,17 @@ CTuint cuKDTreeScan::CheckRangeForLeavesAndPrepareBuffer(nutty::DeviceBuffer<CTb
     
     DEVICE_SYNC_CHECK();
 
-    makeOthers<<<grid, block, 0, m_pStream>>>(
-
-        m_nodes_ContentStartAdd.Begin()(), 
-        m_interiorContentScanner.GetPrefixSum().Begin()(), 
-        m_leafContentScanned.Begin()(), 
-        
-        m_leafCountScanner.GetPrefixSum().Begin()(), 
-        m_interiorCountScanned.Begin()(), 
-        
-        nodeRange);
+    //brauch man nicht...
+//     makeOthers<<<grid, block, 0, m_pStream>>>(
+// 
+//         m_nodes_ContentStartAdd.Begin()(), 
+//         m_interiorContentScanner.GetPrefixSum().Begin()(), 
+//         m_leafContentScanned.Begin()(), 
+//         
+//         m_leafCountScanner.GetPrefixSum().Begin()(), 
+//         m_interiorCountScanned.Begin()(), 
+//         
+//         nodeRange);
 
     DEVICE_SYNC_CHECK();
 
@@ -827,7 +669,8 @@ MakeLeavesResult cuKDTreeScan::MakeLeaves(
     m_dthAsyncIntCopy.WaitForStream(m_stream);
     m_dthAsyncByteCopy.WaitForStream(m_stream);
 
-    m_dthAsyncIntCopy.StartCopy(m_leafContentScanned.GetConstPointer() + nodeCount - 1, 0);
+    //m_dthAsyncIntCopy.StartCopy(m_leafContentScanned.GetConstPointer() + nodeCount - 1, 0);
+    m_dthAsyncIntCopy.StartCopy(m_interiorContentScanner.GetPrefixSum().GetConstPointer() + nodeCount - 1, 0);
     m_dthAsyncIntCopy.StartCopy(m_nodes_ContentCount.GetConstPointer() + nodeCount - 1, 1);
     m_dthAsyncByteCopy.StartCopy(m_activeNodesIsLeaf.GetConstPointer() + nodeCount + nodeOffset - 1, 0);
  
@@ -877,10 +720,11 @@ MakeLeavesResult cuKDTreeScan::MakeLeaves(
 
     DEVICE_SYNC_CHECK();
 
-    compactMakeLeavesData<<<eventGrid, eventBlock, 0, m_pStream>>>(
+    compactMakeLeavesData<1><<<eventGrid, eventBlock, 0, m_pStream>>>(
         isLeafBegin() + nodeOffset,
-        m_interiorCountScanned.GetPointer(),
-        m_leafContentScanned.GetPointer(),
+     //   m_interiorCountScanned.GetConstPointer(),
+       // m_leafContentScanned.GetPointer(),
+       m_nodes_ContentStartAdd.GetPointer(),
          
         m_eventIsLeafScanned.GetConstPointer(),
         //m_eventIsLeafScanner.GetPrefixSum().GetConstPointer(),
@@ -889,7 +733,6 @@ MakeLeavesResult cuKDTreeScan::MakeLeaves(
         m_eventIsLeaf.GetPointer(),
 
         m_leafCountScanner.GetPrefixSum().GetConstPointer(), 
-        m_interiorCountScanned.GetConstPointer(),
 
         m_activeNodes.GetPointer(),
         m_leafCountScanner.GetPrefixSum().GetConstPointer(),
@@ -916,22 +759,22 @@ MakeLeavesResult cuKDTreeScan::MakeLeaves(
 
     m_eventLines.Toggle();
 
+    m_dthAsyncIntCopy.WaitForCopy();
+    m_dthAsyncByteCopy.WaitForCopy();
+
     CTuint copyDistance = nodeCount - leafCount;
 
     if(copyDistance)
     {
-        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_nodes_ContentCount.GetPointer(), m_newNodesContentCount.GetPointer(), nodeCount * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
-        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_nodes_ContentStartAdd.GetPointer(), m_newNodesContentStartAdd.GetPointer(), nodeCount * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
-        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_activeNodes.GetPointer(), m_newActiveNodes.GetPointer(), nodeCount * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
+        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_nodes_ContentCount.GetPointer(), m_newNodesContentCount.GetPointer(), copyDistance * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
+        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_nodes_ContentStartAdd.GetPointer(), m_newNodesContentStartAdd.GetPointer(), copyDistance * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
+        CUDA_RT_SAFE_CALLING_SYNC(cudaMemcpyAsync(m_activeNodes.GetPointer(), m_newActiveNodes.GetPointer(), copyDistance * sizeof(CTuint), cudaMemcpyDeviceToDevice, m_pStream));
     }
 
-    m_dthAsyncIntCopy.WaitForCopy();
-    m_dthAsyncByteCopy.WaitForCopy();
+    CTuint interiorPrimCount = m_dthAsyncIntCopy[0] + (m_dthAsyncByteCopy[0] == 0) * m_dthAsyncIntCopy[1];
 
-    CTuint leafPrimCount = m_dthAsyncIntCopy[0] + m_dthAsyncByteCopy[0] * m_dthAsyncIntCopy[1];
-
-    CTuint interiorPrimCount = eventCount/2 - leafPrimCount;
-    interiorPrimCount = interiorPrimCount > eventCount/2 ? 0 : interiorPrimCount;
+    CTuint leafPrimCount = eventCount/2 - interiorPrimCount;
+    leafPrimCount = leafPrimCount > eventCount/2 ? 0 : leafPrimCount;
 
     MakeLeavesResult result;
     result.leafCount = leafCount;
@@ -976,19 +819,6 @@ void EventLine::ScanEvents(CTuint length)
     exit(-1);
     //eventScanner.ExcScan(mask.Begin(), mask.Begin() + length, nutty::PrefixSumOp<CTbyte>());
 }
-
-struct ClipMaskPrefixSumOP
-{
-    __device__ CTuint operator()(CTbyte elem)
-    {
-        return isSet(elem) ? 1 : 0;
-    }
-
-    __device__ __host__ CTuint GetNeutral(void)
-    {
-        return 0;
-    }
-};
 
 struct ClipMaskPrefixSum3OP
 {
@@ -1070,7 +900,7 @@ void EventLines::BindToConstantMemory(cudaStream_t pStream)
 
 void cuKDTreeScan::ScanClipMaskTriples(CTuint eventCount)
 {
-    ConstTuple<3, CTbyte> ptr;
+    ConstTuple<3, CTclipMask_t> ptr;
     ptr.ts[0] = m_clipsMask.mask[0].GetConstPointer();
     ptr.ts[1] = m_clipsMask.mask[1].GetConstPointer();
     ptr.ts[2] = m_clipsMask.mask[2].GetConstPointer();
@@ -1100,13 +930,14 @@ CT_RESULT cuKDTreeScan::Update(void)
     {
         InitBuffer();
         m_initialized = true;
+        //CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 1024));
     }
 
     //ClearBuffer();
     
-    CTuint primitiveCount = m_currentTransformedVertices.Size() / 3;
+    CTuint primitiveCount = (CTuint)(m_currentTransformedVertices.Size() / 3);
 
-    static bool staticc = true;
+//    static bool staticc = true;
 
     cudaCreateTriangleAABBs(m_currentTransformedVertices.GetPointer(), m_primAABBs.GetPointer(), primitiveCount, m_pStream);
 
@@ -1122,7 +953,7 @@ CT_RESULT cuKDTreeScan::Update(void)
         bboxN.m_max = min3f;
         m_sceneBBox.Resize(m_primAABBs.Size()/2);
         nutty::Reduce(m_sceneBBox.Begin(), m_primAABBs.Begin(), m_primAABBs.End(), ReduceBBox(), bboxN, m_pStream);
-        staticc = false;
+        //staticc = false;
     }
 
     DEVICE_SYNC_CHECK(); 
@@ -1174,21 +1005,16 @@ CT_RESULT cuKDTreeScan::Update(void)
     CTuint g_currentLeafCount = 0;
     CTuint g_leafContentOffset = 0;
     CTuint g_childNodeOffset = 1;
-    CTuint g_childNodeOffset2 = 1;
     CTuint g_nodeOffset = 0;
-    CTuint g_nodeOffset2 = 0;
-    CTuint g_lastChildCount = 0;
     CTuint g_entries = 1;
     
     CTuint eventCount = 2 * primitiveCount;
 
     m_eventLines.Toggle();
-    
-    CTuint maxDepth = 0;
 
-    for(CTbyte d = 0; d <= m_depth; ++d)
+    for(CTbyte d = 0; d < m_depth; ++d)
     {
-        static int i = 0;
+//        static int i = 0;
         //__ct_printf("New Level=%d Events=%d (Frame=%d)\n", d, eventCount, ++i);
         
         CTuint nodeCount = g_interiorNodesCountOnThisLevel;
@@ -1208,7 +1034,8 @@ CT_RESULT cuKDTreeScan::Update(void)
             //m_hNodesContentCount.Resize(nodeCount);
             m_dthAsyncNodesContent.Resize(nodeCount);
             m_dthAsyncNodesContent.StartCopy(m_nodes_ContentCount.GetConstPointer(), 0, nodeCount);
-            //nutty::Copy(m_hNodesContentCount.Begin(), m_nodes_ContentCount.Begin(), nodeCount);
+            PRINT_BUFFER_N(m_nodes_ContentCount, nodeCount);
+            PRINT_BUFFER_N(m_nodes_ContentStartAdd, nodeCount);
 
 #if defined DYNAMIC_PARALLELISM
         }
@@ -1241,6 +1068,8 @@ CT_RESULT cuKDTreeScan::Update(void)
 
         DEVICE_SYNC_CHECK();
 
+#if 0
+        //grad nicht nötig...
         makeLeafIfBadSplitOrLessThanMaxElements<<<nodeGrid, nodeBlock, 0, m_pStream>>>(
             m_nodes,
             m_nodes_IsLeaf.GetPointer() + g_nodeOffset,
@@ -1251,6 +1080,7 @@ CT_RESULT cuKDTreeScan::Update(void)
             nodeCount);
 
         DEVICE_SYNC_CHECK();
+#endif
 
         m_newNodesContentCount.Resize(m_nodes_ContentCount.Size());
         m_newNodesContentStartAdd.Resize(m_nodes_ContentCount.Size());
@@ -1310,7 +1140,7 @@ CT_RESULT cuKDTreeScan::Update(void)
 
 
 
-            CTuint toggleSave = m_eventLines.toggleIndex;
+//            CTuint toggleSave = m_eventLines.toggleIndex;
 
 // CTuint prefixSums[3];
 // for(int k = 0; k < 3; ++k)
@@ -1328,6 +1158,8 @@ CT_RESULT cuKDTreeScan::Update(void)
             //m_clipsMask.ScanMasks(2 * count);
             ScanClipMaskTriples(2 * count);
             //m_clipsMask.mask3Scanner.ExcScan(m_clipsMask.mask3.Begin(), m_clipsMask.mask3.Begin() + 2 * count, ClipMaskPrefixSum3OP());
+
+            DEVICE_SYNC_CHECK();
 // 
             m_dthAsyncIntCopy.WaitForStream(m_stream);
             m_dthAsyncByteCopy.WaitForStream(m_stream);
@@ -1610,7 +1442,7 @@ CT_RESULT cuKDTreeScan::Update(void)
         else
         {
             //todo
-            for(int i = 0; i < nodeCount; ++i)
+            for(CTuint i = 0; i < nodeCount; ++i)
             {
                 m_nodes_IsLeaf.Insert(g_nodeOffset + i, (CTbyte)1);
             }
@@ -1619,8 +1451,7 @@ CT_RESULT cuKDTreeScan::Update(void)
         }
 
         g_entries += 2 * nodeCount;
-        g_lastChildCount = 2 * nodeCount;
-        g_nodeOffset2 = g_nodeOffset;
+
         g_interiorNodesCountOnThisLevel = 2 * (nodeCount - lastLeaves) - leavesRes.leafCount;
         g_currentInteriorNodesCount += g_interiorNodesCountOnThisLevel;
         g_nodeOffset = g_childNodeOffset;
@@ -1643,7 +1474,6 @@ CT_RESULT cuKDTreeScan::Update(void)
             //nutty::Copy(m_nodesBBox[0].Begin(), m_nodesBBox[1].Begin(), m_nodesBBox[1].Begin() + g_interiorNodesCountOnThisLevel);
         }
 
-        maxDepth = d;
         if(eventCount == 0 || g_interiorNodesCountOnThisLevel == 0) //all nodes are leaf nodes
         {
             //primitiveCount = lastCnt;
@@ -1678,23 +1508,23 @@ CT_RESULT cuKDTreeScan::Update(void)
 
     m_interiorNodesCount = g_currentInteriorNodesCount;
     m_leafNodesCount = g_currentLeafCount;
-    CTuint allNodeCount = m_interiorNodesCount + m_leafNodesCount;
+    //CTuint allNodeCount = m_interiorNodesCount + m_leafNodesCount;
 
 #ifdef _DEBUG
     ValidateTree();
 #endif
 
-    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaStreamSynchronize(m_pStream));
+   // CUDA_RT_SAFE_CALLING_NO_SYNC(cudaStreamSynchronize(m_pStream));
 
-//     ct_printf("Tree Summary:\n");
-//     PRINT_BUFFER(m_nodes_IsLeaf);
-//     PRINT_BUFFER(m_nodes_Split);
-//     PRINT_BUFFER(m_nodes_SplitAxis);
-//     PRINT_BUFFER(m_nodes_LeftChild);
-//     PRINT_BUFFER(m_nodes_RightChild);
-//     PRINT_BUFFER(m_leafNodesContentCount);
-//     PRINT_BUFFER(m_leafNodesContentStart);
-//     PRINT_BUFFER(m_nodes_NodeIdToLeafIndex);
+    ct_printf("Tree Summary:\n");
+    PRINT_BUFFER(m_nodes_IsLeaf);
+    PRINT_BUFFER(m_nodes_Split);
+    PRINT_BUFFER(m_nodes_SplitAxis);
+    PRINT_BUFFER(m_nodes_LeftChild);
+    PRINT_BUFFER(m_nodes_RightChild);
+    PRINT_BUFFER(m_leafNodesContentCount);
+    PRINT_BUFFER(m_leafNodesContentStart);
+    PRINT_BUFFER(m_nodes_NodeIdToLeafIndex);
 
     if(m_leafNodesContent.Size() < 1024)
     {
@@ -1741,3 +1571,10 @@ void cuKDTreeScan::ValidateTree(void)
         }
     }
 }
+#else
+
+CT_RESULT cuKDTreeScan::Update(void)
+{
+    return CT_INVALID_OPERATION;
+}
+#endif

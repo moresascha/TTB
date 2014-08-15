@@ -318,7 +318,7 @@ public:
 
     CT_RESULT AddGeometryFromLinearMemory(const void* memory, CTuint elements, CTGeometryHandle* handle);
 
-    CT_RESULT DebugDraw(ICTTreeDebugLayer* dbLayer) const;
+    CT_RESULT DebugDraw(ICTTreeDebugLayer* dbLayer);
 
     uint GetDepth(void) const
     {

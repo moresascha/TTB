@@ -515,7 +515,7 @@ void cpuKDTree::_DebugDrawNodes(CTuint parent, ICTTreeDebugLayer* dbLayer) const
      _DebugDrawNodes(right, dbLayer);
 }
 
-CT_RESULT cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
+CT_RESULT cpuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer)
 {
     checkState(m_build);
 //     for(CTint i = 0; i < m_linearPrimAABBs.Size(); ++i)

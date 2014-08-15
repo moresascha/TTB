@@ -93,7 +93,7 @@ public:
     {
         if(!m_glGeoInit)
         {
-            int bytes = 10 * sizeof(float) * m_lines.size();
+            int bytes = 10 * sizeof(float) * (int)m_lines.size();
 
             m_line.Init(bytes);
 

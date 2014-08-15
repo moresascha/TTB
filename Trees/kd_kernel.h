@@ -2,6 +2,9 @@
 #include "vec_functions.h"
 #include "cuKDTree.h"
 
+
+#if 0
+
 #define ONE_TO_ONE_CPY(_fieldName) dst.##_fieldName[id] = src.##_fieldName[index]
 
 __global__ void reorderEvents(Event dst, Event src, CTuint N)
@@ -118,7 +121,7 @@ __global__ void classifyEdges(
     if(isLeaf[nodeIndex])
     {
         edgeMask[id] = 0;
-        events.nodeIndex[id] = -1;
+        events.nodeIndex[id] = (CTuint)-1;
         return;
     }
 
@@ -368,30 +371,6 @@ __global__ void compactPrimitivesFromEvents(
     }
 }
 
-template <CTbyte hasLeaves>
-__global__ void setActiveNodesMask(
-    CTuint* ids,
-    const CTbyte* __restrict isLeaf,
-    const CTuint* __restrict prefixSum,
-    CTuint nodeOffset,
-    CTuint N
-    )
-{
-    RETURN_IF_OOB(N);
-
-    if(hasLeaves)
-    {
-        if(!isLeaf[nodeOffset + id])
-        {
-            ids[prefixSum[id]] = id;
-        }
-    }
-    else
-    {
-        ids[id] = id;
-    }
-}
-
 __global__ void initThisLevelInteriorNodes(
     Node nodes,
     Split splits,
@@ -491,15 +470,4 @@ __global__ void startGetMinSplits(Node nodes, IndexedSplit* splits, uint offset)
 
 #endif
 
-//-------------
-
-__global__ void createPlaneEvents(
-    CTreal* x,
-    CTreal* y,
-    CTreal* z,
-
-    const BBox* __restrict primBBoxes,
-    CTuint N)
-{
-
-}
+#endif

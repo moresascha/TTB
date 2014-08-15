@@ -93,6 +93,9 @@
     <ClInclude Include="kd_scan_kernel.h">
       <Filter>Source Files\tree_imps</Filter>
     </ClInclude>
+    <ClInclude Include="device_buffer.cuh">
+      <Filter>Source Files\tree_imps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">
@@ -136,19 +139,17 @@
     <CudaCompile Include="cuKDTreeBitonicSearch.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
-    <CudaCompile Include="dpKDTree.cu">
-      <Filter>Source Files\tree_imps</Filter>
-    </CudaCompile>
     <CudaCompile Include="device_heap.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
     <CudaCompile Include="cuKDTreeScan.cu">
       <Filter>Source Files\tree_imps</Filter>
     </CudaCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="kd_kernel.h">
+    <CudaCompile Include="dp_kd.cu">
       <Filter>Source Files\tree_imps</Filter>
-    </None>
+    </CudaCompile>
+    <CudaCompile Include="dp_kd_gmem.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

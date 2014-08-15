@@ -78,7 +78,8 @@ struct AABB_OP
 
 extern "C" void cudaGetSceneBBox(nutty::DeviceBuffer<_AABB>& aabbs, CTuint N, _AABB& aabb)
 {
-    throw "Error";
+    //throw "Error";
     //nutty::Reduce(aabbs.Begin(), aabbs.End(), AABB_OP(), _AABB());
     //aabb = aabbs[0];
+    OutputDebugStringA("cudaGetSceneBBox fails...\n"); exit(-1);
 }

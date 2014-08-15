@@ -23,7 +23,7 @@ public:
 
 //Implementations
 
-#define BB_EPSILON 1e-6
+#define BB_EPSILON 1e-6f
 
 class AABB : public ICTAABB
 {
@@ -67,13 +67,13 @@ public:
 
     void AddVertex(const CTreal3& p)
     {
-        m_min.x = fminf(p.x - BB_EPSILON, m_min.x);
-        m_min.y = fminf(p.y - BB_EPSILON, m_min.y);
-        m_min.z = fminf(p.z - BB_EPSILON, m_min.z);
+        m_min.x = fminf(p.x - (CTreal)BB_EPSILON, m_min.x);
+        m_min.y = fminf(p.y - (CTreal)BB_EPSILON, m_min.y);
+        m_min.z = fminf(p.z - (CTreal)BB_EPSILON, m_min.z);
 
-        m_max.x = fmaxf(p.x + BB_EPSILON, m_max.x);
-        m_max.y = fmaxf(p.y + BB_EPSILON, m_max.y);
-        m_max.z = fmaxf(p.z + BB_EPSILON, m_max.z);
+        m_max.x = fmaxf(p.x + (CTreal)BB_EPSILON, m_max.x);
+        m_max.y = fmaxf(p.y + (CTreal)BB_EPSILON, m_max.y);
+        m_max.z = fmaxf(p.z + (CTreal)BB_EPSILON, m_max.z);
     }
 
     const CTreal3& GetMin(void) const

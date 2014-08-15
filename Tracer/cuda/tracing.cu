@@ -2,13 +2,15 @@
 #ifdef _DEBUG
 #define NUTTY_DEBUG
 #endif
-
+#define NUTTY_DEBUG
 #include <cutil_math.h>
 #include "globals.cuh"
 #include <Nutty.h>
 #include <DeviceBuffer.h>
 #include <Scan.h>
 #include <Copy.h>
+#include <Functions.h>
+#include <Reduce.h>
 #include <Fill.h>
 #include <cuda/cuda_helper.h>
 #include "../print.h"
@@ -26,6 +28,78 @@
 #include "texturing.cuh"
 #include "shading.cuh"
 #include "tracer_api.cuh"
+#include "post_processing.cuh"
+
+
+struct SurfaceObject
+{
+    cudaArray* cuArray;
+    cudaSurfaceObject_t surfObj;
+    SurfaceObject(void)
+    {
+
+    }
+
+    void Init(uint width, uint height)
+    {
+        cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat); 
+        cudaMallocArray(&cuArray, &channelDesc, width, height, cudaArraySurfaceLoadStore); 
+        cudaResourceDesc resDesc; 
+        memset(&resDesc, 0, sizeof(resDesc)); 
+        resDesc.resType = cudaResourceTypeArray;
+        resDesc.res.array.array = cuArray;        
+        cudaCreateSurfaceObject(&surfObj, &resDesc);
+
+       // cudaMemcpyToArray(cuInputArray, 0, 0, h_data, size, cudaMemcpyHostToDevice);
+    }
+
+    ~SurfaceObject(void)
+    {
+        cudaDestroySurfaceObject(surfObj);
+
+        cudaFreeArray(cuArray);
+    }
+};
+
+struct RWTextureObject
+{
+    cudaTextureObject_t tex;
+    cudaArray_t cuArray;
+    cudaSurfaceObject_t surfObj;
+
+    void Init(uint width, uint height)
+    {
+        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float4>();
+
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMallocArray(&cuArray, &desc, width, height));
+
+        cudaResourceDesc resDesc;
+        memset(&resDesc, 0, sizeof(resDesc));
+        resDesc.resType = cudaResourceTypeArray;
+        memset(&resDesc.res, 0, sizeof(resDesc.res));
+        resDesc.res.array.array = cuArray;
+
+        cudaTextureDesc texDesc;
+        memset(&texDesc, 0, sizeof(texDesc));
+        texDesc.addressMode[0] = cudaAddressModeWrap;
+        texDesc.addressMode[1] = cudaAddressModeWrap;
+        texDesc.addressMode[2] = cudaAddressModeWrap;
+        texDesc.filterMode = cudaFilterModeLinear;
+        texDesc.normalizedCoords = 1;
+       // texDesc.readMode = cudaReadModeNormalizedFloat;
+
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaCreateTextureObject(&tex, &resDesc, &texDesc, NULL));
+      
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaCreateSurfaceObject(&surfObj, &resDesc));
+    }
+
+    ~RWTextureObject(void)
+    {
+        cudaDestroyTextureObject(tex);
+        cudaFreeArray(cuArray);
+        cudaDestroySurfaceObject(surfObj);
+    }
+};
 
 __constant__ Real3 g_sunPos;
 
@@ -36,6 +110,10 @@ __constant__ BBox g_bbox;
 __constant__ TreeNodes g_tree;
 
 __constant__ Triangles g_geometry;
+
+__device__ uint* debugInfo = 0;
+
+__constant__ float g_envMapScale;
 
 extern "C" __device__ const Triangles& getGeometry(void)
 {
@@ -53,9 +131,9 @@ extern "C" __device__ Real3 getSunPos(void)
 }
 
 #undef COMPUTE_SHADOW
-#undef COMPUTE_REFRACTION
+#define COMPUTE_REFRACTION
 #define RECURSION 1
-#define MAX_RECURSION 4
+#define MAX_RECURSION 6
 #define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
@@ -109,9 +187,9 @@ __device__  int hitsTriangle(const Real3& rayOrigin, Real min, Real max, const R
     {
         return 0;
     }
-        
+
     Real invDiv = 1.0f / div;
-        
+
     Real3 d = rayOrigin - p0;
 
     Real b1 = dot(d, s1) * invDiv;
@@ -205,7 +283,7 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
         tmax = rayMax;
         pushDown = 1;
 #endif
-        
+
         while(!n.isLeaf[nodeIndex])
         {
             byte axis = n.splitAxis[nodeIndex];
@@ -222,8 +300,8 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
             {
                 first = n.left(nodeIndex);
                 second = n.right(nodeIndex);
-            } 
-            else 
+            }
+            else
             {
                 first = n.right(nodeIndex);
                 second = n.left(nodeIndex);
@@ -266,6 +344,8 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
             Real2 bary;
             Real d;
             uint triId = n.content[i];
+            //debugInfo = (uint*)triId;
+            //triId = 0;
             byte bf = 0;
             if(hitsTriangle(eye, tmin, rayMax, ray, getGeometry().positions + 3 * triId, &d, bary, cf, &bf))
             {
@@ -280,7 +360,7 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
                 }
             }
         }
-        
+
         if(hit.isHit && (t < tmax))
         {
             return;
@@ -351,7 +431,7 @@ __global__ void _traceShadowRays(float4* color, Ray* rays, unsigned int width, u
     Real3 d = getSunPos() - r.getOrigin();
     r.setDir(normalize(d));
     r.setMax(length(d));
-    
+
     TraceResult hitRes;
     traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), no_cull);
 
@@ -426,6 +506,7 @@ __global__ void _traceRays(
     uint id = r.screenCoord.y * width + r.screenCoord.x;
 
     TraceResult hitRes;
+
     traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_back);
 
     if(hitRes.isHit)
@@ -443,7 +524,7 @@ __global__ void _traceRays(
 
             Real3 dir = r.getDir();
             Real weight = r.rayWeight;
-                
+
             if(isTrans)
             {
                 Real3 refraction;
@@ -480,7 +561,6 @@ __global__ void _traceRays(
                 addRay(newReflectionRays, rayIndex, r);
             }
         }
-
 #if defined COMPUTE_SHADOW
         //spawn shadow ray forall lights
         if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
@@ -490,6 +570,16 @@ __global__ void _traceRays(
             addRay(newShadowRays, rayIndex, r);
         }
 #endif
+    }
+    else
+    {
+        float u = 0.5 + atan2(r.dir_max.z, r.dir_max.x) / (2 * PI);
+        float v = 0.5 - asin(r.dir_max.y) / PI;
+        float2 tc = make_float2(u, 1-v);
+        float4 c  = g_envMapScale * readTexture(0, tc);
+        color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
+        color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
+        color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
     }
 }
 
@@ -555,7 +645,7 @@ template<uint blockSize>
 __global__ void __dpTraceRays(Ray* inputRays, float4* color, uint width, uint N, uint depth)
 {
     __shared__ uint shrdScanned[blockSize];
-    
+
     Ray r;
 
     uint mask = 0;
@@ -618,7 +708,7 @@ __global__ void __dpTraceRays(Ray* inputRays, float4* color, uint width, uint N,
     if(threadIdx.x == blockSize-1)
     {
         const uint block = blockSize;
-        __dpTraceRays<blockSize><<<1, blockSize>>>(inputRays, color, width, sum, depth+1);
+        //__dpTraceRays<blockSize><<<1, blockSize>>>(inputRays, color, width, sum, depth+1);
     }
 }
 
@@ -661,12 +751,12 @@ __global__ void _dpTraceRays(
         ray = transform3f(g_view, &ray);
 
         Real min = 0, max = FLT_MAX;
-    
+
         if(intersectP(eye, ray, BBOX_MIN, BBOX_MAX, &min, &max))
         {
             r.screenCoord.x = idx;
             r.screenCoord.y = idy;
-    
+
             r.dir_max.x = ray.x;
             r.dir_max.y = ray.y;
             r.dir_max.z = ray.z;
@@ -730,7 +820,7 @@ __global__ void _dpTraceRays(
     if(linearBlockThreadId == blockSize-1)
     {
         const uint block = blockSize;
-        __dpTraceRays<blockSize><<<1, blockSize>>>(rayMemory + linearBlock * blockSize, color, width, sum, 1);
+       // __dpTraceRays<blockSize><<<1, blockSize>>>(rayMemory + linearBlock * blockSize, color, width, sum, 1);
     }
 }
 
@@ -816,6 +906,18 @@ nutty::DeviceBuffer<uint>* g_sums;
 
 nutty::DeviceBuffer<Ray>* g_blockRayMemory;
 
+nutty::DeviceBuffer<float4>* g_rawColors;
+nutty::DeviceBuffer<float4>* g_blurColorsX;
+nutty::DeviceBuffer<float4>* g_blurColorsY;
+nutty::DeviceBuffer<float4>* g_downSampled;
+nutty::DeviceBuffer<float>* g_luminance;
+nutty::DeviceBuffer<float4>* g_hdColors;
+
+RWTextureObject* g_blurredImage;
+
+SurfaceObject* g_surface;
+SurfaceObject* g_dsSurface;
+
 dim3 g_grid;
 dim3 g_grp;
 int g_recDepth = RECURSION;
@@ -848,6 +950,8 @@ extern "C" void RT_TransformNormals(Normal* normals, Normal* newNormals, Real4* 
     transform<<<grid, group, 0, stream>>>(normals + start, newNormals + start, N);
 }
 
+const static int blurLine = 8;
+
 extern "C" void RT_Init(unsigned int width, unsigned int height)
 {
     g_shadowRays[0] = new nutty::DeviceBuffer<Ray>();
@@ -866,6 +970,8 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_shadowRayMask = new nutty::DeviceBuffer<uint>();
     g_sums = new nutty::DeviceBuffer<uint>();
     g_scannedSums = new nutty::DeviceBuffer<uint>();
+
+    g_blurredImage = new RWTextureObject();
 
     g_blockRayMemory = new nutty::DeviceBuffer<Ray>();
 
@@ -889,12 +995,60 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_scannedSums->Resize((2 * maxRaysPerNode) / 512);
 
     RT_SetLightPos(make_float3(0,10,-10));
+
+    int blurScale = blurLine * blurLine;
+
+    g_rawColors = new nutty::DeviceBuffer<float4>(width * height);
+    
+    g_downSampled = new nutty::DeviceBuffer<float4>((width * height) / blurScale);
+    g_blurColorsX = new nutty::DeviceBuffer<float4>((width * height) / blurScale);
+    g_blurColorsY = new nutty::DeviceBuffer<float4>((width * height) / blurScale);
+
+    g_hdColors = new nutty::DeviceBuffer<float4>(width * height);
+    g_luminance = new nutty::DeviceBuffer<float>(width * height);
+
+    float kernel[KERNEL_LENGTH] = {0.00000067, 0.00002292, 0.00019117, 0.00038771, 0.00019117, 0.00002292, 0.00000067};
+    float sum = 0;
+    for (unsigned int i = 0; i < KERNEL_LENGTH; i++)
+    {
+        sum += kernel[i];
+    }
+
+    for (unsigned int i = 0; i < KERNEL_LENGTH; i++)
+    {
+        kernel[i] /= sum;
+    }
+
+    RT_EnvMapSale(1.0f);
+
+    setConvolutionKernel(kernel);
+
+    g_surface = new SurfaceObject();
+
+    g_surface->Init(width, height);
+
+    g_dsSurface = new SurfaceObject();
+
+    g_dsSurface->Init(width / blurLine, height / blurLine);
+
+    g_blurredImage->Init(width / blurLine, height / blurLine);
 }
 
 extern "C" void RT_Destroy(void)
 {
+    delete g_blurredImage;
+    delete g_surface;
+    delete g_dsSurface;
+
     delete g_rays[0];
     delete g_rays[1];
+
+    delete g_rawColors;
+    delete g_blurColorsX;
+    delete g_blurColorsY;
+    delete g_downSampled;
+    delete g_hdColors;
+    delete g_luminance;
 
     delete g_refractionRays[0];
     delete g_refractionRays[1];
@@ -1061,11 +1215,62 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
 
 #if 1
 
-    computeInitialRays<<<g_grid, g_grp>>>(colors, g_rays[0]->Begin()(), g_rayMask->Begin()(), eye, g_width, g_height, g_width * g_height);
+    computeInitialRays<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_rays[0]->Begin()(), g_rayMask->Begin()(), eye, g_width, g_height, g_width * g_height);
 
     g_lastRays = 0;
     
-    traceRays(colors, g_recDepth, g_width * g_height, g_width, g_height);
+    traceRays(g_rawColors->GetPointer(), g_recDepth, g_width * g_height, g_width, g_height);
+
+//     uint* h_debugInfo;
+//     cudaMemcpyFromSymbol(&h_debugInfo, debugInfo, sizeof(uint*));
+//     print("%p\n", h_debugInfo);
+
+
+    getHDValues<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_hdColors->GetPointer(), g_surface->surfObj, g_luminance->GetPointer(), g_width * g_height);
+    DEVICE_SYNC_CHECK();
+
+    dim3 sdBlock;
+    sdBlock.x = 16;
+    sdBlock.y = 16;
+
+    uint blurWidth = g_width / blurLine;
+    uint blurHeight = g_height / blurLine;
+
+    dim3 sdGrid;
+    sdGrid.x = nutty::cuda::GetCudaGrid(blurWidth, sdBlock.x);
+    sdGrid.y = nutty::cuda::GetCudaGrid(blurHeight, sdBlock.y);
+
+    scaleDown<blurLine><<<sdGrid, sdBlock>>>(g_downSampled->GetPointer(), g_surface->surfObj, g_width/blurLine, g_height/blurLine);
+    DEVICE_SYNC_CHECK();
+
+    dim3 blocks(blurWidth / COLUMNS_BLOCKDIM_X, blurHeight / (COLUMNS_RESULT_STEPS * COLUMNS_BLOCKDIM_Y));
+    dim3 threads(COLUMNS_BLOCKDIM_X, COLUMNS_BLOCKDIM_Y);
+
+    convolutionColumnsKernel<<<blocks, threads>>>(
+        g_blurColorsX->GetPointer(),
+        g_downSampled->GetPointer(),
+        blurWidth,
+        blurHeight,
+        blurWidth
+    );
+
+    dim3 rowblocks(blurWidth / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), blurHeight / ROWS_BLOCKDIM_Y);
+    dim3 rowthreads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
+
+    convolutionRowsKernel<<<rowblocks, rowthreads>>>(
+        g_blurColorsY->GetPointer(),
+        g_blurColorsX->GetPointer(),
+        blurWidth,
+        blurHeight,
+        blurWidth
+    );
+
+    cudaMemcpyToArrayAsync(g_blurredImage->cuArray, 0, 0, g_blurColorsY->GetPointer(), g_blurColorsY->Size() * sizeof(float4), cudaMemcpyDeviceToDevice);
+
+    nutty::Reduce(g_luminance->Begin(), g_luminance->End(), nutty::binary::Plus<float>(), 0.0f);
+
+    addHDValus<<<g_grid, g_grp>>>(colors, g_blurredImage->tex, g_rawColors->GetPointer() , g_width * g_height, blurLine, g_width, g_luminance->GetPointer());
+
 #else
 
     const uint block = 256;
@@ -1122,6 +1327,11 @@ extern "C" void RT_IncDepth(void)
 extern "C" void RT_DecDepth(void)
 {
     RT_SetRecDepth(g_recDepth-1);
+}
+
+extern "C" void RT_EnvMapSale(float scale)
+{
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_envMapScale, &scale, sizeof(float), 0, cudaMemcpyHostToDevice));
 }
 
 extern "C" void RT_BindTextureAtlas(const cudaArray_t array)

@@ -187,6 +187,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="camera.h" />
+    <ClInclude Include="cuda\post_processing.cuh" />
     <ClInclude Include="double_math.h" />
     <ClInclude Include="glTreeDebug.h" />
     <ClInclude Include="gl_font.h" />
@@ -195,6 +196,7 @@
     <ClInclude Include="input.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="print.h" />
+    <ClInclude Include="scene.h" />
     <ClInclude Include="texture_array.h" />
     <ClInclude Include="window.h" />
   </ItemGroup>
@@ -205,6 +207,11 @@
     <ClCompile Include="io.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="print.cpp" />
+    <ClCompile Include="scene.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="test_scenes.cpp" />
     <ClCompile Include="texture_array.cpp" />
     <ClCompile Include="window.cpp" />
   </ItemGroup>

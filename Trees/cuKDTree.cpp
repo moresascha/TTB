@@ -19,15 +19,15 @@ CT_RESULT cuKDTree::Init(CTuint flags)
     return CT_SUCCESS;
 }
 
-void cuKDTree::_DebugDrawNodes(CTuint parent, AABB aabb, ICTTreeDebugLayer* dbLayer) const
+void cuKDTree::_DebugDrawNodes(CTuint parent, const AABB& aabb, ICTTreeDebugLayer* dbLayer) const
 {
-    if(m_nodes_IsLeaf[parent])
+    if(m_host_nodes_IsLeaf[parent])
     {
         return;
     }
 
-    CT_SPLIT_AXIS axis = (CT_SPLIT_AXIS)m_nodes_SplitAxis[parent];
-    CTreal split = m_nodes_Split[parent];
+    CT_SPLIT_AXIS axis = (CT_SPLIT_AXIS)m_host_nodes_SplitAxis[parent];
+    CTreal split = m_host_nodes_Split[parent];
 
     CTreal3 start;
     CTreal3 end;
@@ -62,8 +62,8 @@ void cuKDTree::_DebugDrawNodes(CTuint parent, AABB aabb, ICTTreeDebugLayer* dbLa
     setAxis(end, other1, getAxis(aabb.GetMax(), other1));
     dbLayer->DrawLine(start, end);
 
-    CTuint left = m_nodes_LeftChild[parent];
-    CTuint right = m_nodes_RightChild[parent];
+    CTuint left = m_host_nodes_LeftChild[parent];
+    CTuint right = m_host_nodes_RightChild[parent];
     AABB l;
     AABB r;
     splitAABB(&aabb, split, axis, &l, &r);
@@ -71,7 +71,7 @@ void cuKDTree::_DebugDrawNodes(CTuint parent, AABB aabb, ICTTreeDebugLayer* dbLa
     _DebugDrawNodes(right, r, dbLayer);
 }
 
-CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
+CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer)
 {
     checkState(m_initialized);
     if(!m_sceneBBox.Size())
@@ -82,6 +82,19 @@ CT_RESULT cuKDTree::DebugDraw(ICTTreeDebugLayer* dbLayer) const
     aabb.m_min = m_sceneBBox[0].GetMin();
     aabb.m_max = m_sceneBBox[0].GetMax();
     dbLayer->DrawWiredBox(aabb);
+
+    m_host_nodes_SplitAxis.Resize(m_nodes_SplitAxis.Size());
+    m_host_nodes_Split.Resize(m_nodes_Split.Size());
+    m_host_nodes_IsLeaf.Resize(m_nodes_IsLeaf.Size());
+    m_host_nodes_LeftChild.Resize(m_nodes_LeftChild.Size());
+    m_host_nodes_RightChild.Resize(m_nodes_RightChild.Size());
+
+    nutty::Copy(m_host_nodes_SplitAxis.Begin(), m_nodes_SplitAxis.Begin(), m_nodes_SplitAxis.End());
+    nutty::Copy(m_host_nodes_Split.Begin(), m_nodes_Split.Begin(), m_nodes_Split.End());
+    nutty::Copy(m_host_nodes_IsLeaf.Begin(), m_nodes_IsLeaf.Begin(), m_nodes_IsLeaf.End());
+    nutty::Copy(m_host_nodes_LeftChild.Begin(), m_nodes_LeftChild.Begin(), m_nodes_LeftChild.End());
+    nutty::Copy(m_host_nodes_RightChild.Begin(), m_nodes_RightChild.Begin(), m_nodes_RightChild.End());
+
     _DebugDrawNodes(0, aabb, dbLayer);
     return CT_SUCCESS;
 }
@@ -122,7 +135,7 @@ const CTGeometryHandle* cuKDTree::GetGeometry(CTuint* gc)
 
 const CTreal* cuKDTree::GetRawPrimitives(CTuint* bytes) const
 {
-    *bytes = m_currentTransformedVertices.Bytes();
+    *bytes = (CTuint)m_currentTransformedVertices.Bytes();
     const CTreal3* ptr = m_currentTransformedVertices.Begin()();
     return (const CTreal*)ptr;
 }
@@ -148,17 +161,17 @@ const void* cuKDTree::GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCo
     {
     case eCT_LEAF_NODE_PRIM_IDS :
         {
-            *byteCount = m_leafNodesContent.Bytes();
+            *byteCount = (CTuint)m_leafNodesContent.Bytes();
             return m_leafNodesContent.Begin()();
         } break;
     case eCT_LEAF_NODE_PRIM_START_INDEX :
         {
-            *byteCount = m_leafNodesContentStart.Bytes();
+            *byteCount = (CTuint)m_leafNodesContentStart.Bytes();
             return m_leafNodesContentStart.Begin()();
         } break;
     case eCT_LEAF_NODE_PRIM_COUNT :
         {
-            *byteCount = m_leafNodesContentCount.Bytes();
+            *byteCount = (CTuint)m_leafNodesContentCount.Bytes();
             return m_leafNodesContentCount.Begin()();
         } break;
     case eCT_NODE_PRIM_IDS :
@@ -172,27 +185,27 @@ const void* cuKDTree::GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCo
         }
     case eCT_NODE_SPLITS :
         {
-            *byteCount = m_nodes_Split.Bytes();
+            *byteCount = (CTuint)m_nodes_Split.Bytes();
             return m_nodes_Split.Begin()();
         }
     case eCT_NODE_SPLIT_AXIS :
         {
-            *byteCount = m_nodes_SplitAxis.Bytes();
+            *byteCount = (CTuint)m_nodes_SplitAxis.Bytes();
             return m_nodes_SplitAxis.Begin()();
         }
     case eCT_NODE_RIGHT_CHILD :
         {
-            *byteCount = m_nodes_RightChild.Bytes();
+            *byteCount = (CTuint)m_nodes_RightChild.Bytes();
             return m_nodes_RightChild.Begin()();
         }
     case eCT_NODE_LEFT_CHILD :
         {
-            *byteCount = m_nodes_LeftChild.Bytes();
+            *byteCount = (CTuint)m_nodes_LeftChild.Bytes();
             return m_nodes_LeftChild.Begin()();
         }
     case eCT_NODE_IS_LEAF :
         {
-            *byteCount = m_nodes_IsLeaf.Bytes();
+            *byteCount = (CTuint)m_nodes_IsLeaf.Bytes();
             return m_nodes_IsLeaf.Begin()();
         }
     case eCT_NODE_PRIM_COUNT :
@@ -207,7 +220,7 @@ const void* cuKDTree::GetLinearMemory(CT_LINEAR_MEMORY_TYPE type, CTuint* byteCo
         }
     case eCT_NODE_TO_LEAF_INDEX :
         {
-            *byteCount = m_nodes_NodeIdToLeafIndex.Bytes();
+            *byteCount = (CTuint)m_nodes_NodeIdToLeafIndex.Bytes();
             return m_nodes_NodeIdToLeafIndex.Begin()();
         }
     default : *byteCount = 0; return NULL;
@@ -219,7 +232,7 @@ CT_RESULT cuKDTree::AddGeometryFromLinearMemory(const void* memory, CTuint eleme
     CTulong h = (CTulong)m_linearGeoHandles.size();
 
     GeometryRange range;
-    range.start = m_orginalVertices.Size();
+    range.start = (CTuint)m_orginalVertices.Size();
     range.end = range.start + elements;
 
     nutty::HostPtr<const float3> h_p = nutty::HostPtr_Cast<const float3>(memory);    

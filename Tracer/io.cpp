@@ -237,6 +237,8 @@ struct ThreadData
     std::vector<int> posindex;
     std::vector<int> nindex;
     std::vector<int> tcindex;
+
+    bool hasTC;
 };
 
 template <typename Stream>
@@ -244,7 +246,7 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
 {
     std::string lines[3];
     //std::stringstream ss;
-
+    bool hasTC = td->hasTC;
     while(s.good())
     {
         std::string flag;
@@ -273,7 +275,6 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
             TexCoord v;
             s >> v.x;
             s >> v.y;
-
             td->texCoords.push_back(v);
         }
         else if(flag == "f")
@@ -289,7 +290,7 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
             std::stringstream ss;
             ss << lines[0] << " " << lines[1] << " " << lines[2];
 
-            bool hasTC = !contains(lines[0].c_str(), "//");
+            //bool hasTC = !contains(lines[0].c_str(), "//");
 
             int ip0;
             int in0;
@@ -359,12 +360,12 @@ int ReadObjFileFromStream(Stream& s, ThreadData* td)
                 td->tcindex.push_back(it1 - 1);
                 td->tcindex.push_back(it0 - 1);
             }
-            else
-            {
-                td->tcindex.push_back(0);
-                td->tcindex.push_back(0);
-                td->tcindex.push_back(0);
-            }
+//             else
+//             {
+//                 td->tcindex.push_back(0);
+//                 td->tcindex.push_back(0);
+//                 td->tcindex.push_back(0);
+//             }
         }
         else
         {
@@ -452,6 +453,7 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
     int start = 0;
     int end = 0;
     bool firstIval = true;
+    bool hasTC = false;
     int numThreads = 0;
     do
     {
@@ -477,6 +479,10 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
             start = end;
             continue;
         }
+        else if(beginsWith(flag.c_str(), "vt"))
+        {
+            hasTC = true;
+        }
         else if(beginsWith(flag.c_str(), "f"))
         {
             end++;
@@ -488,6 +494,7 @@ extern "C" int ReadObjFileThreaded(const char* file, RawTriangles& tries)
         if((lines-1) && (rangeLength == lines) || (!s.good() && text.size() > 0))
         {
             ThreadData* td = new ThreadData();
+            td->hasTC = hasTC;
             data.push_back(td);
             td->text = text;
             handles.push_back(ParseObjRange(td));

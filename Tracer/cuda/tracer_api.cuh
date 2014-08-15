@@ -30,6 +30,8 @@ extern "C" void RT_SetLightPos(const float3& light);
 
 extern "C" void RT_GetRayInfo(std::string& info);
 
+extern "C" void RT_EnvMapSale(float scale);
+
 extern "C" void RT_SetRecDepth(int d);
 
 extern "C" void RT_IncDepth(void);

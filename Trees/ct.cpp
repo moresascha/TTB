@@ -225,7 +225,7 @@ CT_RESULT CT_API CTReleaseGeometry(ICTGeometry* geo)
     return CTReleaseObject(geo);
 }
 
-CT_RESULT CT_API CTTreeDrawDebug(const ICTTree* tree, ICTTreeDebugLayer* debugger)
+CT_RESULT CT_API CTTreeDrawDebug(ICTTree* tree, ICTTreeDebugLayer* debugger)
 {
     return tree->DebugDraw(debugger);
 }
