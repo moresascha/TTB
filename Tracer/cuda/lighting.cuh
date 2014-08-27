@@ -13,3 +13,5 @@ extern "C" __device__ Real schlick(const Real3& n, const Real3& i, Real n1, Real
 extern "C" __device__ Real Reflectance(const Real3& i, const Real3& n, Real n1, Real n2, Real fresnel);
 
 extern "C"__device__ float3 phongLighting(const float3& eye, const float3& world, const float3& lightPos, const float3& normal, const Material* material);
+
+extern "C" __device__ float3 directionLighting(const float3& lightPos, const float3& normal);

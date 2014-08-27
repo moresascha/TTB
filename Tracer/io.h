@@ -78,6 +78,8 @@ extern "C" TextureData GetTextureJPGData(const char* file);
 
 extern "C" TextureData GetTexturePNGData(const char* file);
 
+extern "C" TextureData GetTextureTGAData(const char* file);
+
 extern "C" int ReadTextFile(const char* file, std::string& dst);
 
 extern "C" int ReadObjFile(const char* file, RawTriangles& tries);

@@ -8,8 +8,6 @@
 #include "material.cuh"
 #include "traversing.cuh"
 
-__constant__ uint g_shader = 0;
-
 __device__ void debugShadeTC(const TraceResult& result, uint id, float4* color, const Ray& r, const Material& mats)
 {
     Real2 tc = getGeometry().getTrianglelTC(result.triIndex, result.bary);
@@ -27,12 +25,26 @@ __device__ void red(const TraceResult& result, uint id, float4* color, const Ray
     color[id] = make_float4(1,0,0,0);
 }
 
+__device__ void directionalLightOnly(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
+{
+    Real3 normal = getGeometry().getTrianglelNormal(result.triIndex, result.bary);
+    Real3 pos = getGeometry().getTrianglelHitPos(result.triIndex, result.bary);
+
+    float3 c = directionLighting(-SUN_POS, normal);
+
+    c *= ray.rayWeight;
+
+    color[id].x = color[id].x * (1 - ray.rayWeight) + c.x;
+    color[id].y = color[id].y * (1 - ray.rayWeight) + c.y;
+    color[id].z = color[id].z * (1 - ray.rayWeight) + c.z;
+}
+
 __device__ void phongShade(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
 {
     Real3 normal = getGeometry().getTrianglelNormal(result.triIndex, result.bary);
     Real3 pos = getGeometry().getTrianglelHitPos(result.triIndex, result.bary);
 
-    float3 c = phongLighting(ray.getOrigin(), pos, SUN_POS, normal, &mat);
+    float3 c = mat.diffuseI * directionLighting(-SUN_POS, normal); //phongLighting(ray.getOrigin(), pos, SUN_POS, normal, &mat);
 
     if(mat.texId() != NO_TEXTURE)
     {
@@ -44,6 +56,22 @@ __device__ void phongShade(const TraceResult& result, uint id, float4* color, co
         c.z *= col.z;
     }
 
+    for(int i = 0; i < getLightCount(); ++i)
+    {
+        const Light& light = getLight(i);
+        float3 d = light.position - pos;
+        float distSquared = dot(d, d);
+
+        if(distSquared > light.intensity.y * light.intensity.y) 
+        {
+            continue;
+        }
+        
+        float in = max(0, 1 - distSquared / (light.intensity.y * light.intensity.y));
+        
+        c += in * light.color * light.intensity.x * phongLighting(ray.getOrigin(), pos, light.position, normal, &mat);
+    }
+
     c *= ray.rayWeight;
 
     color[id].x = color[id].x * (1 - ray.rayWeight) + c.x;
@@ -51,9 +79,9 @@ __device__ void phongShade(const TraceResult& result, uint id, float4* color, co
     color[id].z = color[id].z * (1 - ray.rayWeight) + c.z;
 }
 
-__constant__ Shader g_shaderPtr[4] = {&phongShade, &debugShadeNormal, &debugShadeTC, &red};
+__constant__ Shader g_shaderPtr[5] = {&phongShade, &directionalLightOnly, &debugShadeNormal, &debugShadeTC, &red};
 
 extern "C" __device__ void shade(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mat)
 {
-    g_shaderPtr[g_shader](result, id, color, ray, mat);
+    g_shaderPtr[4](result, id, color, ray, mat);
 }

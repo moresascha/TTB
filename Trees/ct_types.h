@@ -31,6 +31,15 @@ typedef unsigned long long CTulong;
 
 typedef CTlong CTGeometryHandle;
 
+typedef CTuint __allType;
+
+typedef CTbyte CTeventType_t;
+typedef __allType CTeventMask_t;
+typedef CTbyte CTnodeIsLeaf_t;
+typedef CTbyte CTeventIsLeaf_t;
+typedef __allType CTclipMask_t;
+typedef __allType CTaxis_t;
+
 typedef void(*OnNodeTraverse)(ICTTreeNode* node, void* userData);
 
 enum CT_GEOMETRY_TOPOLOGY

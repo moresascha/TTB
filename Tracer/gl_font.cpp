@@ -5,10 +5,20 @@
 #include <sstream>
 
 glProgram* g_fontProg;
+glProgram* g_fontQuadProg;
 glGeometry* g_fontGeo;
 GLuint g_fontTexture;
 unsigned int g_windowWidth;
 unsigned int g_windowHeight;
+
+struct TextBuffer
+{
+    std::string buffer;
+    float px;
+    float py;
+};
+
+std::vector<TextBuffer> g_textBuffer;
 
 struct CMFontMetrics
 {
@@ -140,7 +150,9 @@ bool FontInit(unsigned int w, unsigned int h)
 {
     g_windowWidth = w;
     g_windowHeight = h;
-    g_fontProg = g_fontProg->CreateProgramFromFile("glsl/font_vs.glsl", "glsl/font_fs.glsl");
+    g_fontProg = glProgram::CreateProgramFromFile("glsl/font_vs.glsl", "glsl/font_fs.glsl");
+
+    g_fontQuadProg = glProgram::CreateProgramFromFile("glsl/font_vs.glsl", "glsl/font_fs_quad.glsl");
 
     if(g_fontProg == NULL)
     {
@@ -183,19 +195,6 @@ bool FontInit(unsigned int w, unsigned int h)
     return true;
 }
 
-void FontBeginDraw(void)
-{
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_BLEND);
-    g_fontProg->Bind();
-    g_fontGeo->Bind();
-}
-
-void FontEndDraw(void)
-{
-    glDisable(GL_BLEND);
-}
-
 void FontDrawBMFont(const char* text, float x, float y)
 {
     if(x < 0 || x > 1 || y < 0 || y > 1)
@@ -206,8 +205,8 @@ void FontDrawBMFont(const char* text, float x, float y)
     int curserX = 0;
     int curserY = 0;
 
-//     RECT r;
-//     GetClientRect(GetWindowHandle(), &r); 
+    //     RECT r;
+    //     GetClientRect(GetWindowHandle(), &r); 
 
     float w = (float) g_windowWidth;
     float h = (float) g_windowHeight;
@@ -261,9 +260,45 @@ void FontDrawBMFont(const char* text, float x, float y)
     }
 }
 
+void FontBeginDraw(void)
+{
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+}
+
+void FontEndDraw(void)
+{
+    //glEnable(GL_DEPTH_TEST);
+//     float localVertices[20] = 
+//     {
+//         -1, +0.47, 0, 0, 0,
+//         -0.65, +0.47, 0, 0, 0,
+//         -1,  +1, 0, 0, 0,
+//         -0.65f, +1, 0, 0, 0
+//     };
+// 
+//     g_fontQuadProg->Bind();
+//     g_fontGeo->UploadData(localVertices);
+//     g_fontGeo->Draw();
+    g_fontProg->Bind();
+    for(auto it = g_textBuffer.begin(); it != g_textBuffer.end(); ++it)
+    {
+        FontDrawBMFont(it->buffer.c_str(), it->px, it->py);
+    }
+    //glDisable(GL_DEPTH_TEST);
+    g_textBuffer.clear();
+    glDisable(GL_BLEND);
+}
+
 void FontDrawText(const char* text, float px, float py) /*x & y in [0,1]*/
 {
-    FontDrawBMFont(text, px, py);
+    TextBuffer buffer;
+    buffer.buffer = text;
+    buffer.px = px;
+    buffer.py = py;
+    g_textBuffer.push_back(buffer);
+
+    //FontDrawBMFont(text, px, py);
     return;
     //todo
     const int window_w = 768;
@@ -316,4 +351,5 @@ void FontDestroy(void)
     glDeleteTextures(1, &g_fontTexture);
     delete g_fontProg;
     delete g_fontGeo;
+    delete g_fontQuadProg;
 }

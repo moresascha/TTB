@@ -28,6 +28,8 @@ unsigned int g_lastY = 0;
 
 IScene* g_currentScene;
 
+bool g_bEnd = false;
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
@@ -80,6 +82,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_KEYDOWN :
         {
             g_key = wParam;
+            if(g_key == KEY_ESC)
+            {
+                g_bEnd = true;
+                break;
+            }
             g_currentScene->OnKeyDown(g_key);
             return 0;
         } break;
@@ -90,9 +97,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-#define MY_CLASS L"MyClass"
-
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int nCmdShow)
 {
 
@@ -101,14 +105,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 //     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_CHECK_CRT_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_EVERY_16_DF);
 // #endif
 
-    int width = (1024 * 3) / 2;
-    int height = (512 * 3) / 2;
-    
-    HWND hwnd = CreateScreen(hInstance, WndProc, MY_CLASS, L"", width, height);
+    int width = 1024;//(1024 * 3) / 2;
+    int height = 768;//(512 * 3) / 2;
+    TCHAR* clazz = L"TC";
+    HWND hwnd = CreateScreen(hInstance, WndProc, clazz, L"", width, height);
 
     RECT rect;
     GetClientRect(hwnd, &rect);
-    
+    setlocale(LC_ALL, "German_Germany");
     HGLRC context; 
     if(!(context = CreateGLContextAndMakeCurrent(hwnd)))
     {
@@ -119,7 +123,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     UpdateWindow(hwnd);
     SetForegroundWindow(hwnd);
     SetFocus(hwnd);  
-   // Resize(width, height);
 
     HDC hDC = GetDC(hwnd);
 
@@ -129,19 +132,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     SwapBuffers(hDC);
 
-    g_currentScene = RT_CreateExampleScene();
+    g_currentScene = RT_CreateExampleScene(width, height);
 
-    //g_cam.Move(0, 1, -5);
-
-    int twidth = width / 2;
-    int theight = height;
-
-    g_currentScene->OnResize(width, height);
+    //g_currentScene->OnResize(width, height);
 
     chimera::util::HTimer timer;
     timer.VReset();
     MSG msg;
-    while(1)
+    while(!g_bEnd)
     {
         if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
@@ -194,12 +192,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
             timer.VTick();
         }
     }
+    ShowWindow(hwnd, SW_HIDE);
 
     delete g_currentScene;
 
     ReleaseGLContext(context);
 
-    ReleaseScreen(hInstance, hwnd, MY_CLASS);
+    ReleaseScreen(hInstance, hwnd, clazz);
 
     return 0;
 }

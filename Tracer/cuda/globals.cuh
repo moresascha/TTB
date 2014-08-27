@@ -13,8 +13,23 @@
 #define BBOX_MIN getBBox()._min
 #undef KEPLER
 
+struct Light
+{
+    float3 color;
+    float3 position;
+    float3 intensity;
+};
+
+extern "C" __device__ float getGlobalIllum(void);
+
 extern "C" __device__ Real3 getSunPos(void);
 
 extern "C" __device__ const BBox& getBBox(void);
 
 extern "C" __device__ const Triangles& getGeometry(void);
+
+extern "C" __device__ int getLightCount(void);
+
+extern "C" __device__ const Light& getLight(int i);
+
+extern "C" __device__ int getCurrentShader(void);

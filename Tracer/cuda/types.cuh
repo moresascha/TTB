@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cutil_inline.h>
+#include <ct.h>
 
 #undef DOUBLE_PREC
 
@@ -44,6 +45,7 @@ struct TraceResult;
 struct Ray;
 struct BBox;
 struct cuTextureObj;
+struct Light;
 
 typedef void (*Shader)(const TraceResult& result, uint id, float4* color, const Ray& ray, const Material& mats);
 
@@ -61,8 +63,8 @@ struct TreeNodes
     const uint* restrict___ _right;
     const uint* restrict___ contentStart;
     const uint* restrict___ leafIndex;
-    const byte* restrict___ isLeaf;
-    const byte* restrict___ splitAxis;
+    const CTnodeIsLeaf_t* restrict___ isLeaf;
+    const CTaxis_t* restrict___ splitAxis;
     const Real* restrict___ split;
 
     __device__ uint left(uint index) const

@@ -63,8 +63,8 @@ struct NodeGPUDataTransformer
     nutty::DeviceBuffer<uint> lineartreeRightNode;
 
     nutty::DeviceBuffer<float> lineartreeSplit;
-    nutty::DeviceBuffer<byte> lineartreeSplitAxis;
-    nutty::DeviceBuffer<byte> lineartreeNodeIsLeaf;
+    nutty::DeviceBuffer<CTaxis_t> lineartreeSplitAxis;
+    nutty::DeviceBuffer<CTnodeIsLeaf_t> lineartreeNodeIsLeaf;
 
     CTuint leafIndex;
     CTuint startPos;
@@ -86,7 +86,7 @@ struct NodeGPUDataTransformer
         uint cnt;
         const void* memory;
         CT_SAFE_CALL(CTGetLinearMemory(tree, &cnt, &memory, type));
-        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(buffer.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyAsync(buffer.Begin()(), memory, cnt, cudaMemcpyHostToDevice, tree->GetStream()));
     }
 
     void Resize(uint leafs, uint interiorNodes)
@@ -135,6 +135,8 @@ protected:
     glDebugLayer* m_debugLayer;
     int m_w;
     int m_h;
+    int m_tw;
+    int m_th;
     ICTTree* m_tree;
     NodeGPUDataTransformer* m_nodeGPUData;
     GPUTraceData* m_triGPUData;
@@ -147,6 +149,7 @@ protected:
     bool m_updateTreeEachFrame;
     float m_envMapScale;
     bool m_drawDebugTree;
+    bool m_drawFont;
 
     int m_handleOffset;
     
@@ -159,7 +162,7 @@ protected:
     void DrawText(const char* text, float x, float y);
 
 public:
-    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0)
+    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0), m_drawFont(true)
     {
 
     }
@@ -196,9 +199,16 @@ public:
 
 //implementation
 
-bool BaseScene::Create(int twidth, int theight)
+bool BaseScene::Create(int width, int height)
 {
-    assert(FontInit(twidth, theight));
+    m_w = width;
+    m_h = height;
+    m_tw = m_w;
+    m_th = m_h;
+    int twidth = m_tw;
+    int theight = m_th;
+
+    assert(FontInit(width, height));
 
     m_p = glProgram::CreateProgramFromFile("glsl/vs.glsl", "glsl/fs.glsl");
     m_p->Bind();
@@ -242,13 +252,6 @@ bool BaseScene::Create(int twidth, int theight)
 
     m_triGPUData = new GPUTraceData();
 
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "Spiral_Caged.obj");
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "mikepan_bmw3v3.obj",  &hhandle);
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "dragon.obj");
-
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "angel.obj", &g_testObjData.handle);
-    //CTGeometryHandle handle = AddGeometry(*triGPUData, tree, atlas, "bunny.obj");
-
     FillScene();
 
     m_normalsSave.Resize(m_triGPUData->triNormals.Size());
@@ -262,7 +265,6 @@ bool BaseScene::Create(int twidth, int theight)
 
     m_nodeGPUData = new NodeGPUDataTransformer();
 
-    
     m_tris.materials = m_triGPUData->materials.Begin()();
     m_tris.normals = m_triGPUData->triNormals.Begin()();
     m_tris.texCoords = m_triGPUData->triTc.Begin()();
@@ -312,23 +314,23 @@ bool BaseScene::Create(int twidth, int theight)
     timer.VReset();
     traceTimer.VReset();
 
+    OnResize(twidth, theight);
+
     return true;
 }
 
 void BaseScene::OnResize(int width, int height)
 {
-    height = height == 0 ? 1 : height;
-    width = width == 0 ? 1 : width;
-    glViewport(0, 0, width, height);
-    m_camera.ComputeProj(width / 2, height);
+    height = height <= 0 ? 1 : height;
+    width = width <= 0 ? 1 : width;
+    //glViewport(0, 0, width, height);
+    m_camera.ComputeProj(width, height);
     if(m_debugLayer)
     {
         m_debugLayer->GetProgram()->Bind();
         GLuint loc = glGetUniformLocation(m_debugLayer->GetProgram()->Id(), "perspective");
         glUniformMatrix4fv(loc, 1, false, (float*)m_camera.GetProjection());
     }
-    m_w = width;
-    m_h = height;
 }
 
 void BaseScene::ComputeMovement(float dt)
@@ -372,16 +374,11 @@ void BaseScene::OnKeyDown(int key)
 {
     keyDown_key = key;
 
-//     if(key == KEY_G)
-//     {
-//         m_animateCamera ^= 1;
-//     }
-//     else if(key == KEY_H)
-//     {
-//         m_animateLight ^= 1;
-//     }
-//     else 
-    if(key == KEY_P)
+    if(key == KEY_M)
+    {
+        m_drawFont ^= 1;
+    }
+    else if(key == KEY_P)
     {
         m_updateTreeEachFrame ^= 1;
     } 
@@ -462,9 +459,11 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
         if(it->second.texFile.size() && texToSlot.find(it->second.texFile) == texToSlot.end())
         {
             std::string texPath;
-            FindFilePath(it->second.texFile.c_str(), texPath);
-            int slot = m_atlas->AddTexture(texPath.c_str());
-            texToSlot[it->second.texFile] = slot;
+            if(FindFilePath(it->second.texFile.c_str(), texPath))
+            {
+                int slot = m_atlas->AddTexture(texPath.c_str());
+                texToSlot[it->second.texFile] = slot;
+            }
         }
     }
 
@@ -546,7 +545,6 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
 void BaseScene::UpdateTree(void)
 {
     chimera::util::HTimer loadTimer;
-
     {
         print("Building Tree ...\n");
         cudaStreamSynchronize(m_tree->GetStream());
@@ -557,7 +555,7 @@ void BaseScene::UpdateTree(void)
         m_lastTreeBuildTime = loadTimer.GetMillis();
         print("Building Tree took '%f' Seconds\n", loadTimer.GetSeconds());
     }    
-
+    
     CTuint nodeCount;
     CT_SAFE_CALL(CTGetInteriorNodeCount(m_tree, &nodeCount));
 
@@ -605,7 +603,7 @@ void BaseScene::UpdateTree(void)
         const void* memory;
         CT_SAFE_CALL(CTGetLinearMemory(m_tree, &cnt, &memory, eCT_LEAF_NODE_PRIM_IDS));
         m_nodeGPUData->lineartreeContent.Resize(cnt / sizeof(uint));
-        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpy(m_nodeGPUData->lineartreeContent.Begin()(), memory, cnt, cudaMemcpyHostToDevice));
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyAsync(m_nodeGPUData->lineartreeContent.Begin()(), memory, cnt, cudaMemcpyHostToDevice, m_tree->GetStream()));
 
         gpuTree.content = m_nodeGPUData->lineartreeContent.Begin()();
     }
@@ -652,31 +650,13 @@ void BaseScene::OnRender(float dt)
 {
     static int frame = 0;
 
-    int width = (1024 * 3) / 2;
-    int height = (512 * 3) / 2;
+    int width = m_w;
+    int height = m_h;
 
-    int twidth = 768; int theight = 768;
+    int twidth = m_tw; int theight = m_th;
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glViewport(width - twidth, 0, width - twidth, height);
-
-    m_debugLayer->BeginDraw();
-    GLuint loc = glGetUniformLocation(m_debugLayer->GetProgram()->Id(), "view");
-    glUniformMatrix4fv(loc, 1, false, (float*)m_camera.GetIView());
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE);
-
-    if(m_drawDebugTree)
-    {
-        m_debugLayer->ResetGeometry();
-        CT_SAFE_CALL(CTTreeDrawDebug(m_tree, m_debugLayer));
-        //m_drawDebugTree = false;
-    }
-
-    m_debugLayer->DrawGLGeo();
-
-    glDisable(GL_BLEND);
-    m_debugLayer->EndDraw();
+    //glViewport(twidth, 0, width - twidth, height);
 
     int glError = glGetError();
     if(glError != GL_NO_ERROR)
@@ -697,7 +677,7 @@ void BaseScene::OnRender(float dt)
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSynchronize());
     traceTimer.Start();
-    RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
+    //RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaGraphicsUnmapResources(1, &m_res));
 
@@ -705,55 +685,81 @@ void BaseScene::OnRender(float dt)
 
     traceTimer.Stop();
 
-    //font
-    uint inc;
-    uint lnc;
-    CTGetInteriorNodeCount(m_tree, &inc);
-    CTGetLeafNodeCount(m_tree, &lnc);
-    std::stringstream ss;
-    ss.str("");
-    ss << "Nodes=" << (inc + lnc) << "\n";
-    ss << "Leafes=" << lnc << "\n";
-
-    double traceMillis = traceTimer.GetMillis();
-
-    double allMillis = (double)(traceMillis);
-    ss << "Frame: " << frame << "\n";
-    ss << twidth * theight << " Pixel\n";
-    ss << RT_GetLastRayCount() << " Rays\n";
-    ss << m_tree->GetPrimitiveCount() << " Primitives\n";
-    //ss << (int)(1000.0 / (traverseTimer.GetMillis() == 0 ? 1 : traverseTimer.GetMillis())) << " FPS (Build)\n";
-    ss << "Tracing: " << traceMillis <<" ms\n";
-    ss << "Building: " << m_lastTreeBuildTime << " ms\n";
-    ss << "Overall Time: " << allMillis << " ms\n";
-
-//     ss << "\n\nMirror=" << g_matToPrint.isMirror() << " (1)\n";
-//     ss << "Alpha=" << g_matToPrint.alpha() << " (2,3)\n";
-//     ss << "Reflectance=" << g_matToPrint.reflectivity() << " (4,5)\n";
-//     ss << "Fresnel_R=" << g_matToPrint.fresnel_r() << " (6,7)\n";
-//     ss << "Fresnel_T=" << g_matToPrint.fresnel_t() << " (8,9)\n";
-//     ss << "IOR=" << g_matToPrint.reflectionIndex() << " (o,p)\n";
-
-    FontBeginDraw();
-    std::string info;
-    RT_GetRayInfo(info);
-    ss << info << "\n";
-
-    ss << "Tracedepth (-j, +k) = " << RT_GetRecDepth() << "\n";
-//     ss << "Animate Camera (g) = " << g_animateCamera << "\n";
-//     ss << "Animate Light (h) = " << g_animateLight << "\n";
-
-    FontDrawText(ss.str().c_str(), 0.0025f, 0);
-    FontEndDraw();
-
-    //font end
-
     m_p->Bind();
     glViewport(0, 0, twidth, theight);
     glBindVertexArray(0);
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
     glDrawArrays(GL_TRIANGLES, 0, 4);
+
+    if(m_drawDebugTree)
+    {
+        m_debugLayer->BeginDraw();
+        GLuint loc = glGetUniformLocation(m_debugLayer->GetProgram()->Id(), "view");
+        glUniformMatrix4fv(loc, 1, false, (float*)m_camera.GetIView());
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+        m_debugLayer->ResetGeometry();
+        CT_SAFE_CALL(CTTreeDrawDebug(m_tree, m_debugLayer));
+        m_debugLayer->DrawGLGeo();
+
+        glDisable(GL_BLEND);
+        m_debugLayer->EndDraw();
+    }
+
+    if(m_drawFont)
+    {
+        float xoffset = 0;// m_tw / (float)m_w;
+        //font
+        uint inc;
+        uint lnc;
+        CTGetInteriorNodeCount(m_tree, &inc);
+        CTGetLeafNodeCount(m_tree, &lnc);
+        std::stringstream ss;
+        ss.str("");
+        ss << "Nodes: " << (inc + lnc) << "\n";
+        ss << "Leafes: " << lnc << "\n";
+        ss << "Depth: " << m_tree->GetDepth() << "\n";
+        double traceMillis = traceTimer.GetMillis();
+        
+        if(!m_updateTreeEachFrame)
+        {
+            m_lastTreeBuildTime = 0;
+        }
+
+        double allMillis = (double)(traceMillis + m_lastTreeBuildTime);
+        ss << "Frame: " << frame << "\n";
+        ss << twidth * theight << " Pixel\n";
+        ss << RT_GetLastRayCount() << " Rays\n";
+        ss << m_tree->GetPrimitiveCount() << " Primitives\n";
+        //ss << (int)(1000.0 / (traverseTimer.GetMillis() == 0 ? 1 : traverseTimer.GetMillis())) << " FPS (Build)\n";
+        ss << "Tracing: " << traceMillis <<" ms\n";
+        ss << "Building: " << m_lastTreeBuildTime << " ms\n";
+        ss << "Overall Time: " << allMillis << " ms\n";
+
+        //     ss << "\n\nMirror=" << g_matToPrint.isMirror() << " (1)\n";
+        //     ss << "Alpha=" << g_matToPrint.alpha() << " (2,3)\n";
+        //     ss << "Reflectance=" << g_matToPrint.reflectivity() << " (4,5)\n";
+        //     ss << "Fresnel_R=" << g_matToPrint.fresnel_r() << " (6,7)\n";
+        //     ss << "Fresnel_T=" << g_matToPrint.fresnel_t() << " (8,9)\n";
+        //     ss << "IOR=" << g_matToPrint.reflectionIndex() << " (o,p)\n";
+
+        FontBeginDraw();
+        //     std::string info;
+        //     RT_GetRayInfo(info);
+        //     ss << info << "\n";
+
+        ss << "\n\nTracedepth (-j, +k) = " << RT_GetRecDepth() << "\n";
+        //     ss << "Animate Camera (g) = " << g_animateCamera << "\n";
+        //     ss << "Animate Light (h) = " << g_animateLight << "\n";
+
+        FontDrawText(ss.str().c_str(), xoffset + 0.0025f, 0);
+        FontEndDraw();
+
+        //font end
+    }
+
+    frame++;
 }
 
 BaseScene::~BaseScene(void)
@@ -772,7 +778,7 @@ BaseScene::~BaseScene(void)
     delete m_atlas;
     cudaFree(m_tris.materials);
 
-    if(m_tree->GetDeviceType() == CT_CREATE_TREE_CPU)
+    if(m_tree->GetDeviceType() == eCT_CPU)
     {
         cudaFree(m_tris.positions);
     }

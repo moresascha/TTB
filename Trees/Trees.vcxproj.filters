@@ -96,6 +96,9 @@
     <ClInclude Include="device_buffer.cuh">
       <Filter>Source Files\tree_imps</Filter>
     </ClInclude>
+    <ClInclude Include="generic_kernel.h">
+      <Filter>Source Files\tree_imps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">
@@ -150,6 +153,12 @@
     </CudaCompile>
     <CudaCompile Include="dp_kd_gmem.cu">
       <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
+    <CudaCompile Include="sorting.cu">
+      <Filter>Source Files\tree_imps</Filter>
+    </CudaCompile>
+    <CudaCompile Include="compaction_test.cu">
+      <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>
 </Project>

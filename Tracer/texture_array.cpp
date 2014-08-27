@@ -2,7 +2,7 @@
 #include "io.h"
 #include <Nutty.h>
 
-cuTextureAtlas::cuTextureAtlas(void) : m_entries(0), m_size(16)
+cuTextureAtlas::cuTextureAtlas(void) : m_entries(0), m_size(64)
 {
 
 }
@@ -86,9 +86,13 @@ int cuTextureAtlas::AddTexture(const char* file)
     {
        texData = GetTextureJPGData(file);
     }
-    else
+    else if(_file.find(".png") != std::string::npos)
     {
        texData = GetTexturePNGData(file);
+    }
+    else
+    {
+        texData = GetTextureTGAData(file);
     }
 
     int slot = AddTexture(texData.data, texData.width, texData.height);

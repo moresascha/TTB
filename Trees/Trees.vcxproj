@@ -30,7 +30,7 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v110</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
@@ -147,7 +147,8 @@
       <CodeGeneration>compute_35,sm_35</CodeGeneration>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
       <TargetMachinePlatform>64</TargetMachinePlatform>
-      <PtxAsOptionV>false</PtxAsOptionV>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <MaxRegCount>0</MaxRegCount>
     </CudaCompile>
     <CudaLink>
       <AdditionalDependencies>cudadevrt.lib</AdditionalDependencies>
@@ -166,6 +167,7 @@
     <ClInclude Include="ct_types.h" />
     <ClInclude Include="device_buffer.cuh" />
     <ClInclude Include="device_heap.h" />
+    <ClInclude Include="generic_kernel.h" />
     <ClInclude Include="kd_scan_kernel.h" />
     <ClInclude Include="output.h" />
     <ClInclude Include="ct_runtime.h" />
@@ -190,11 +192,15 @@
     <ClCompile Include="cuKDTree.cpp" />
     <ClCompile Include="output.cpp" />
     <ClCompile Include="geometry.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="main.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="memory.cpp" />
     <ClCompile Include="traverse.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CudaCompile Include="compaction_test.cu" />
     <CudaCompile Include="create_aabb.cu">
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">compute_35,sm_35</CodeGeneration>
       <CodeGeneration Condition="'$(Configuration)|$(Platform)'=='Release|x64'">compute_35,sm_35</CodeGeneration>
@@ -216,6 +222,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
     </CudaCompile>
+    <CudaCompile Include="sorting.cu" />
     <CudaCompile Include="transform.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

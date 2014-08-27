@@ -202,7 +202,7 @@ cuEventLine dpEventLine::GetPtr(CTbyte index)
     line.primId = primId[index].GetPointer();
     line.ranges = ranges[index].GetPointer();
     line.mask = mask.GetPointer();
-    line.scannedEventTypeEndMask = typeStartScanned.GetConstPointer();
+    line.scannedEventTypeStartMask = typeStartScanned.GetConstPointer();
 
     return line;
 }
@@ -337,9 +337,9 @@ __device__ void dpScanEventTypesTriples(CTuint eventCount)
     ptr.ts[2] = g_eventTriples[d_toggleIndex].lines[2].type; 
 
     Tuple<3, CTuint> ptr1;
-    ptr1.ts[0] = (CTuint*)g_eventTriples[d_toggleIndex].lines[0].scannedEventTypeEndMask; //dpEventLines[0].typeStartScanned.GetPointer();
-    ptr1.ts[1] = (CTuint*)g_eventTriples[d_toggleIndex].lines[1].scannedEventTypeEndMask;
-    ptr1.ts[2] = (CTuint*)g_eventTriples[d_toggleIndex].lines[2].scannedEventTypeEndMask;
+    ptr1.ts[0] = (CTuint*)g_eventTriples[d_toggleIndex].lines[0].scannedEventTypeStartMask; //dpEventLines[0].typeStartScanned.GetPointer();
+    ptr1.ts[1] = (CTuint*)g_eventTriples[d_toggleIndex].lines[1].scannedEventTypeStartMask;
+    ptr1.ts[2] = (CTuint*)g_eventTriples[d_toggleIndex].lines[2].scannedEventTypeStartMask;
     
     Tuple<3, CTuint> sums;
     sums.ts[0] = d_scannedEventTypeEndMaskSums[0]; //dpEventLines[0].scannedEventTypeEndMaskSums.GetPointer();
@@ -1362,25 +1362,25 @@ __global__ void dpCreateKDTree(
                // msgBuffer[d+0] = childNodeOffset;
                 //currentDepth = d+1;
 
-                dpCreateKDTree<BLOCK_SIZE><<<1, BLOCK_SIZE>>>(
-
-
-
-
-
-
-
-
-
-                    maxDepth,
-                    eventCount,
-                    interiorNodesCountOnThisLevel,
-                    currentInteriorNodesCount,
-                    nodeOffset,
-                    leafContentOffset,
-                    currentLeafCount,
-                    childNodeOffset,
-                    currentDepth+1);
+//                 dpCreateKDTree<BLOCK_SIZE><<<1, BLOCK_SIZE>>>(
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+// 
+//                     maxDepth,
+//                     eventCount,
+//                     interiorNodesCountOnThisLevel,
+//                     currentInteriorNodesCount,
+//                     nodeOffset,
+//                     leafContentOffset,
+//                     currentLeafCount,
+//                     childNodeOffset,
+//                     currentDepth+1);
 
                 /*
                 CTuint newblockSize;
@@ -1418,8 +1418,7 @@ __global__ void dpCreateKDTree(
           //  }
         }
 
-//         __syncthreads();
-        return;
+        //return;
     }
 #endif
 }
@@ -1455,7 +1454,7 @@ __global__ void dpInit(CTuint primitiveCount, const BBox* __restrict sceneBBox, 
                 nutty::DevicePtr_Cast<IndexedEvent>(g_eventTriples[0].lines[i].indexedEvent + 2 * primitiveCount), 
                 EventSort());
         }
-        
+
         reorderEvent3<<<2 * elementGrid, elementBlock>>>(2 * primitiveCount);
 #endif
         d_toggleIndex = 1;
@@ -1484,11 +1483,11 @@ CT_RESULT cudpKDTree::Update(void)
         GrowLeafContentMemory(2 * primitiveCount);
 #else
         //dragon
-        GrowPerLevelNodeMemory(19384);
-        GrowNodeMemory(131072);
-        GrowEventMemory(3504132);
-        GrowLeafNodeMemory(41434);
-        GrowLeafContentMemory(3504132);
+//         GrowPerLevelNodeMemory(19384);
+//         GrowNodeMemory(131072);
+//         GrowEventMemory(3504132);
+//         GrowLeafNodeMemory(41434);
+//         GrowLeafContentMemory(3504132);
 
         //bunny
         GrowPerLevelNodeMemory(4*2048);
@@ -1508,12 +1507,13 @@ CT_RESULT cudpKDTree::Update(void)
         m_depth = (byte)min(64, max(1, (m_depth == 0xFF ? GenerateDepth(primitiveCount) : m_depth)));
     }
 
-    //static bool staticc = true;
+    static bool staticc = true;
     DEVICE_SYNC_CHECK();
-    cudaCreateTriangleAABBs(m_currentTransformedVertices.GetPointer(), m_primAABBs.GetPointer(), primitiveCount, m_pStream);
-    DEVICE_SYNC_CHECK();
-   // if(staticc)
+    if(staticc)
     {
+        cudaCreateTriangleAABBs(m_currentTransformedVertices.GetPointer(), m_primAABBs.GetPointer(), primitiveCount, m_pStream);
+        DEVICE_SYNC_CHECK();
+
         DEVICE_SYNC_CHECK();
 
         static float3 max3f = {FLT_MAX, FLT_MAX, FLT_MAX};
@@ -1523,7 +1523,7 @@ CT_RESULT cudpKDTree::Update(void)
         bboxN.m_min = max3f; 
         bboxN.m_max = min3f;
         nutty::Reduce(m_sceneBBox.Begin(), m_primAABBs.Begin(), m_primAABBs.End(), ReduceBBox(), bboxN, m_pStream);
-      //  staticc = false;
+        staticc = false;
     }
 
     DEVICE_SYNC_CHECK();
@@ -1580,7 +1580,7 @@ CT_RESULT cudpKDTree::Update(void)
         data.leafContentOffset = 0;
         data.currentDepth = 0;
 
-        const CTuint BLOCK_SIZE = 64;
+        const CTuint BLOCK_SIZE = 128;
         dpCreateKDTree<BLOCK_SIZE><<<1, BLOCK_SIZE, 0, m_pStream>>>(m_depth, data.eventCount, 1,1,0,0,0,1,0);
         
 #ifdef MEM_CHECK

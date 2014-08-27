@@ -27,7 +27,7 @@ extern "C" HWND CreateScreen(HINSTANCE hInstance, WNDPROC WndProc, TCHAR szWindo
         szWindowClass, 
         szTitle, 
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, 
+        0, 
         0, 
         width, 
         height, 

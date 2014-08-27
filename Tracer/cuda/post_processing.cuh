@@ -67,16 +67,13 @@ __global__ void getHDValues(float4* colors, float4* hd, cudaSurfaceObject_t surf
     surf2Dwrite(color, surface, sizeof(float4)*idx, idy);
 }
 
-__global__ void addHDValus(float4* finalColor, cudaTextureObject_t hdBlur, float4* rawColors, uint N, uint blurLine, uint width, float* logAverageLuminace)
+__global__ void addHDValues(float4* finalColor, cudaTextureObject_t hdBlur, float4* rawColors, uint N, uint blurLine, uint width, uint height, float* logAverageLuminace)
 {
     uint idx = blockDim.x * blockIdx.x + threadIdx.x;
     uint idy = blockDim.y * blockIdx.y + threadIdx.y;
     uint id = idx + idy * blockDim.x * gridDim.x;
 
     if(id >= N) return;
-
-    uint bidx = (blockDim.x * blockIdx.x + threadIdx.x) / blurLine;
-    uint bidy = (blockDim.y * blockIdx.y + threadIdx.y) / blurLine;
 
     float4 color = rawColors[id];
     
@@ -88,7 +85,7 @@ __global__ void addHDValus(float4* finalColor, cudaTextureObject_t hdBlur, float
 
     float lumiScaled = lumi / (1 + lumi);
 
-    float4 blur = tex2D<float4>(hdBlur, idx / (float)width, idy / (float)width);
+    float4 blur = tex2D<float4>(hdBlur, idx / (float)width, idy / (float)height);
 
     color += blur;
     color = color * lumiScaled;

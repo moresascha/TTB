@@ -1,8 +1,7 @@
-
 #ifdef _DEBUG
 #define NUTTY_DEBUG
 #endif
-#define NUTTY_DEBUG
+
 #include <cutil_math.h>
 #include "globals.cuh"
 #include <Nutty.h>
@@ -30,6 +29,7 @@
 #include "tracer_api.cuh"
 #include "post_processing.cuh"
 
+#define MEASURING
 
 struct SurfaceObject
 {
@@ -115,6 +115,89 @@ __device__ uint* debugInfo = 0;
 
 __constant__ float g_envMapScale;
 
+__constant__ uint g_shader = 0;
+
+static const int MAX_LIGHTS = 16;
+
+__constant__ Light g_lights[MAX_LIGHTS];
+__constant__ int g_currentLightCount;
+
+__device__ int getCurrentShader(void)
+{
+    return g_shader;
+}
+
+__device__ int getLightCount(void)
+{
+    return g_currentLightCount;
+}
+
+__device__ const Light& getLight(int index)
+{
+    return g_lights[index];
+}
+
+
+__device__ float getGlobalIllum(void)
+{
+    return g_envMapScale;
+}
+
+struct rtLight : public _RT_Light
+{
+    int _index;
+    float3 _position;
+    float3 _intensity_N_radius;
+    float3 _color;
+
+    rtLight(int index) : _index(index)
+    {
+        _position.x = 0;
+        _position.y = 6;
+        _position.x = 0;
+        _intensity_N_radius.x = 1;
+        _intensity_N_radius.y = 1;
+        _color.x = 1;
+        _color.y = 1;
+        _color.z = 1;
+        Upload();
+    }
+
+    void Upload(void)
+    {
+        Light l;
+        l.color = _color;
+        l.intensity = _intensity_N_radius;
+        l.position = _position;
+        cudaMemcpyToSymbolAsync(g_lights, &l, sizeof(Light), _index * sizeof(Light), cudaMemcpyHostToDevice);
+    }
+
+    void SetPosition(const float3& pos)
+    {
+        _position = pos;
+        Upload();
+    }
+
+    void SetColor(const float3& c)
+    {
+        _color = c;
+        Upload();
+    }
+
+    void SetIntensity(float in)
+    {
+        _intensity_N_radius.x = in;
+        Upload();
+    }
+
+    void SetRadius(float r)
+    {
+        _intensity_N_radius.y = r;
+        Upload();
+    }
+
+};
+
 extern "C" __device__ const Triangles& getGeometry(void)
 {
     return g_geometry;
@@ -130,7 +213,7 @@ extern "C" __device__ Real3 getSunPos(void)
     return g_sunPos;
 }
 
-#undef COMPUTE_SHADOW
+#define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
 #define RECURSION 1
 #define MAX_RECURSION 6
@@ -286,7 +369,7 @@ __device__ void traverse(const TreeNodes& n, const Real3& eye, const Real3& ray,
 
         while(!n.isLeaf[nodeIndex])
         {
-            byte axis = n.splitAxis[nodeIndex];
+            CTaxis_t axis = n.splitAxis[nodeIndex];
 
             Real nsplit = n.split[nodeIndex];
 
@@ -542,7 +625,7 @@ __global__ void _traceRays(
 
                 if(abs(dot(refraction, refraction)) > 0)
                 {
-                    r.rayWeight = weight * ratio * (1 - mat.alpha()) * mat.reflectivity();
+                    r.rayWeight = ratio * (1 - mat.alpha()) * mat.reflectivity();
                     r.setDir(refraction);
                     r.setOrigin(hitPos + (hitRes.isBackFace ? +RAY_HIT_NORMAL_DELTA * normal : -RAY_HIT_NORMAL_DELTA * normal));
                     r.clampToBBox();
@@ -563,12 +646,49 @@ __global__ void _traceRays(
         }
 #if defined COMPUTE_SHADOW
         //spawn shadow ray forall lights
-        if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
+//         if(dot(normal, normalize(SUN_POS - hitPos)) > 0)
+//         {
+//             r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+//             r.rayWeight = 0.5f;
+//             addRay(newShadowRays, rayIndex, r);
+//         }
+        
+        r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+        r.rayWeight = 0;//0.5f;
+        float4 c = color[id];
+        for(int i = 0; i < getLightCount(); ++i)
         {
-            r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
-            r.rayWeight = 0.5f;
-            addRay(newShadowRays, rayIndex, r);
+            const Light& light = getLight(i);
+            float3 d = light.position - hitPos;
+            float shadowScale = dot(normal, normalize(d));
+
+            float distSquared = dot(d, d);
+
+            if(distSquared < light.intensity.y * light.intensity.y)
+            {
+                if(shadowScale < 0)
+                {
+                    c *= (1 - 0.5 * -shadowScale);
+                }
+                else
+                {
+                    Real3 d = light.position - r.getOrigin();
+                    r.setDir(normalize(d));
+                    r.setMax(length(d));
+
+                    TraceResult hitRes;
+                    traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), no_cull);
+
+                    if(hitRes.isHit)
+                    {
+                        float in = max(0, 1-distSquared / (light.intensity.y * light.intensity.y));
+                        Material mat = g_geometry.getMaterial(hitRes.triIndex);
+                        c *= lerp(1.0f, 1 - 0.5 * shadowScale * in, mat.alpha());
+                    }
+                }
+            }
         }
+        color[id] = c;
 #endif
     }
     else
@@ -576,7 +696,7 @@ __global__ void _traceRays(
         float u = 0.5 + atan2(r.dir_max.z, r.dir_max.x) / (2 * PI);
         float v = 0.5 - asin(r.dir_max.y) / PI;
         float2 tc = make_float2(u, 1-v);
-        float4 c  = g_envMapScale * readTexture(0, tc);
+        float4 c  = readTexture(0, tc);
         color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
         color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
         color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
@@ -778,50 +898,69 @@ __global__ void _dpTraceRays(
             if(hitRes.isHit)
             {
                 Material mat = g_geometry.getMaterial(hitRes.triIndex);
-                shade(hitRes, id, color, r, mat);
+                //shade(hitRes, id, color, r, mat);
 
                 Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
                 Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
-
-                bool isTrans = mat.isTransp();
-                bool isMirror = mat.isMirror();
-
-                Real3 dir = r.getDir();
+// 
+//                 bool isTrans = mat.isTransp();
+//                bool isMirror = mat.isMirror();
+// 
+//                 Real3 dir = r.getDir();
                 Real weight = r.rayWeight;
-
-                if(isMirror)
+// 
+                //if(isMirror)
                 {
                     Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
                     Real3 reflection = reflect(r.getDir(), normal);
                     r.rayWeight = ratio * weight * mat.reflectivity();
                     r.setDir(reflection);
                     r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
-                    r.clampToBBox();
+                    //r.clampToBBox();
                     //addRay(newReflectionRays, rayIndex, r);
-                    mask = 1;
+                    //mask = 1;
+
+                    float u = 0.5 + atan2(r.dir_max.z, r.dir_max.x) / (2 * PI);
+                    float v = 0.5 - asin(r.dir_max.y) / PI;
+                    float2 tc = make_float2(u, 1-v);
+                    float4 c  = readTexture(0, tc);
+                    c.x = 0; c.y = 0; c.z = 0;
+                    color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
+                    color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
+                    color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
                 }
+            }
+            else
+            {
+                float u = 0.5 + atan2(r.dir_max.z, r.dir_max.x) / (2 * PI);
+                float v = 0.5 - asin(r.dir_max.y) / PI;
+                float2 tc = make_float2(u, 1-v);
+                float4 c  = readTexture(0, tc);
+                color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
+                color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
+                color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
             }
         }
     }
 
-    __syncthreads();
-
-    uint sum = __2DblockScan<blockSize>(shrdScanned, mask, linearBlockThreadId);
-
-    __syncthreads();
-
-    if(mask)
-    {
-        rayMemory[linearBlock * blockSize + sum - mask] = r;
-    }
-
-     __syncthreads();
-
-    if(linearBlockThreadId == blockSize-1)
-    {
-        const uint block = blockSize;
-       // __dpTraceRays<blockSize><<<1, blockSize>>>(rayMemory + linearBlock * blockSize, color, width, sum, 1);
-    }
+//     __syncthreads();
+// 
+//     uint sum = __2DblockScan<blockSize>(shrdScanned, mask, linearBlockThreadId);
+// 
+//     __syncthreads();
+// 
+//     if(mask)
+//     {
+//         rayMemory[linearBlock * blockSize + sum - mask] = r;
+//     }
+// 
+//      __syncthreads();
+// 
+//     if(linearBlockThreadId == blockSize-1)
+//     {
+//         const uint block = blockSize;
+//        // __dpTraceRays<blockSize><<<1, blockSize>>>(rayMemory + linearBlock * blockSize, color, width, sum, 1);
+//     }
 }
 
 __global__ void computeInitialRays(float4* color, Ray* rays, uint* rayMask, float3 eye, unsigned int width, unsigned int height, unsigned int N)
@@ -918,6 +1057,9 @@ RWTextureObject* g_blurredImage;
 SurfaceObject* g_surface;
 SurfaceObject* g_dsSurface;
 
+int g_cpuCurrentLightCount;
+rtLight* cpuLights[MAX_LIGHTS];
+
 dim3 g_grid;
 dim3 g_grp;
 int g_recDepth = RECURSION;
@@ -975,6 +1117,14 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
 
     g_blockRayMemory = new nutty::DeviceBuffer<Ray>();
 
+    int null = 0;
+    cudaMemcpyToSymbol(g_currentLightCount, &null, sizeof(int), 0, cudaMemcpyHostToDevice);
+
+    for(int i = 0; i < MAX_LIGHTS; ++i)
+    {
+        cpuLights[i] = new rtLight(i);
+    }
+
     unsigned int maxRaysLastBranch = width * height * (1 << (MAX_RECURSION - 1));
     unsigned int maxRaysPerNode = width * height;
 
@@ -994,7 +1144,7 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_sums->Resize((2 * maxRaysPerNode) / 512);
     g_scannedSums->Resize((2 * maxRaysPerNode) / 512);
 
-    RT_SetLightPos(make_float3(0,10,-10));
+    RT_SetSunDir(make_float3(10,10,-10));
 
     int blurScale = blurLine * blurLine;
 
@@ -1036,6 +1186,11 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
 
 extern "C" void RT_Destroy(void)
 {
+    for(int i = 0; i < MAX_LIGHTS; ++i)
+    {
+        delete cpuLights[i];
+    }
+
     delete g_blurredImage;
     delete g_surface;
     delete g_dsSurface;
@@ -1131,7 +1286,7 @@ void traceRays(float4* colors,
             
             g_lastRays += lastRayCount;
             //print("Range: from '%d' -> '%d' (L=%d) got '%d' Rays\n", range.begin, range.end, range.Length(), lastRayCount);
-            g_info << "Range: '" << range.begin << "' -> '"<< range.end << " got '" << lastRayCount << "' Rays\n";
+            g_info << "Range: '" << range.begin << "' ->'\n  "<< range.end << " got '" << lastRayCount << "' Rays\n";
             if(lastRayCount > 0)
             {
                 uint blockSize = 256;
@@ -1168,7 +1323,7 @@ void traceRays(float4* colors,
                 }
 
                 //print("%d\n", cudaDeviceSynchronize());
-
+#if 0
                 uint shadowRaysCount = compactRays(g_shadowRayMask->Begin(), g_shadowRays[1]->Begin(), g_shadowRays[0]->Begin(), lastRayCount);
 
                 g_lastRays += shadowRaysCount;
@@ -1178,6 +1333,7 @@ void traceRays(float4* colors,
                     g = nutty::cuda::GetCudaGrid(shadowRaysCount, blockSize);
                     _traceShadowRays<<<g, blockSize>>>(colors, g_shadowRays[1]->Begin()(), width, height, shadowRaysCount);
                 }
+#endif
 
 #if defined COMPUTE_REFRACTION
                 if(i+1 < recDepth)
@@ -1213,7 +1369,7 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
 
     //nutty::ZeroMem(*g_rayMask);
 
-#if 1
+#ifndef MEASURING
 
     computeInitialRays<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_rays[0]->Begin()(), g_rayMask->Begin()(), eye, g_width, g_height, g_width * g_height);
 
@@ -1221,11 +1377,28 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
     
     traceRays(g_rawColors->GetPointer(), g_recDepth, g_width * g_height, g_width, g_height);
 
-//     uint* h_debugInfo;
-//     cudaMemcpyFromSymbol(&h_debugInfo, debugInfo, sizeof(uint*));
-//     print("%p\n", h_debugInfo);
+#else
+
+    const uint block = 256;
+    dim3 grp;
+    dim3 grid;
+    grp.x = 16;
+    grp.y = 16;
+    grp.z = 1;
+    
+    grid.x = nutty::cuda::GetCudaGrid(g_width, grp.x);
+    grid.y = nutty::cuda::GetCudaGrid(g_height, grp.y);
+    grid.z = 1;
+
+    //g_blockRayMemory->Resize(block * (grid.y * grid.x));
+
+    _dpTraceRays<block><<<grid, grp>>>(colors, g_blockRayMemory->GetPointer(), eye, g_width, g_height, g_width * g_height);
+
+    DEVICE_SYNC_CHECK();
+#endif
 
 
+#ifndef MEASURING
     getHDValues<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_hdColors->GetPointer(), g_surface->surfObj, g_luminance->GetPointer(), g_width * g_height);
     DEVICE_SYNC_CHECK();
 
@@ -1269,29 +1442,9 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
 
     nutty::Reduce(g_luminance->Begin(), g_luminance->End(), nutty::binary::Plus<float>(), 0.0f);
 
-    addHDValus<<<g_grid, g_grp>>>(colors, g_blurredImage->tex, g_rawColors->GetPointer() , g_width * g_height, blurLine, g_width, g_luminance->GetPointer());
-
-#else
-
-    const uint block = 256;
-    dim3 grp;
-    dim3 grid;
-    grp.x = 16;
-    grp.y = 16;
-    grp.z = 1;
-    
-    grid.x = nutty::cuda::GetCudaGrid(g_width, grp.x);
-    grid.y = nutty::cuda::GetCudaGrid(g_height, grp.y);
-    grid.z = 1;
-
-   // CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 1024));
-
-    g_blockRayMemory->Resize(block * (grid.y * grid.x));
-
-    _dpTraceRays<block><<<grid, grp>>>(colors, g_blockRayMemory->GetPointer(), eye, g_width, g_height, g_width * g_height);
-
-    DEVICE_SYNC_CHECK();
+    addHDValues<<<g_grid, g_grp>>>(colors, g_blurredImage->tex, g_rawColors->GetPointer() , g_width * g_height, blurLine, g_width, g_height, g_luminance->GetPointer());
 #endif
+
 }
  
 extern "C" void RT_BindTree(TreeNodes& tree)
@@ -1299,7 +1452,7 @@ extern "C" void RT_BindTree(TreeNodes& tree)
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_tree, &tree, sizeof(TreeNodes), 0, cudaMemcpyHostToDevice));
 }
 
-extern "C" void RT_SetLightPos(const float3& pos)
+extern "C" void RT_SetSunDir(const float3& pos)
 {
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_sunPos, &pos, sizeof(float3), 0, cudaMemcpyHostToDevice));
 }
@@ -1327,6 +1480,25 @@ extern "C" void RT_IncDepth(void)
 extern "C" void RT_DecDepth(void)
 {
     RT_SetRecDepth(g_recDepth-1);
+}
+
+extern "C" void RT_SetShader(int shaderId)
+{
+    CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyToSymbol(g_shader, &shaderId, sizeof(int), 0, cudaMemcpyHostToDevice));
+}
+
+extern "C" void RT_AddLight(RT_Light_t* light)
+{
+    if(g_cpuCurrentLightCount >= MAX_LIGHTS)
+    {
+        *light = NULL;
+        return;
+    }
+
+    *light = cpuLights[g_cpuCurrentLightCount];
+
+    g_cpuCurrentLightCount++;
+    cudaMemcpyToSymbolAsync(g_currentLightCount, &g_cpuCurrentLightCount, sizeof(int), 0, cudaMemcpyHostToDevice);
 }
 
 extern "C" void RT_EnvMapSale(float scale)

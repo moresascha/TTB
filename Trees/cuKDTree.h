@@ -12,14 +12,8 @@
 #include "memory.h"
 #include "device_heap.h"
 
-typedef CTbyte __allType;
-
-typedef __allType CTeventType_t;
-typedef __allType CTeventMask_t;
-typedef CTbyte CTnodeIsLeaf_t;
-typedef __allType CTeventIsLeaf_t;
-typedef __allType CTclipMask_t;
-typedef __allType CTaxis_t;
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
 
 #define RETURN_IF_OOB(__N) \
     CTuint id = GlobalId; \
@@ -28,8 +22,8 @@ typedef __allType CTaxis_t;
     return; \
     }
 
-#define EVENT_START ((CTeventType_t)0)
-#define EDGE_END    ((CTeventType_t)1)
+#define EVENT_START ((CTeventType_t)1)
+#define EDGE_END    ((CTeventType_t)0)
 
 template <
     typename T
@@ -175,6 +169,12 @@ public:
         //cudaMemcpy(m_pPitchedHostMemory + slot, devSrc, range * sizeof(T), cudaMemcpyDeviceToHost);
     }
 
+    void StartCopyUnsafe(const void* devSrc, size_t slot, size_t range = 1)
+    {
+        CUDA_RT_SAFE_CALLING_NO_SYNC(cudaMemcpyAsync(m_pPitchedHostMemory + slot, devSrc, range, cudaMemcpyDeviceToHost, m_pStream));
+        //cudaMemcpy(m_pPitchedHostMemory + slot, devSrc, range * sizeof(T), cudaMemcpyDeviceToHost);
+    }
+
     void WaitForCopy(void)
     {
         CUDA_RT_SAFE_CALLING_NO_SYNC(cudaStreamSynchronize(m_pStream));
@@ -251,7 +251,7 @@ __device__ __forceinline__ void setAxis(CTclipMask_t& mask, CTaxis_t axis)
 
 struct IndexedEvent
 {
-    CTuint index;
+    //CTuint index;
     CTreal v;
 };
 
@@ -404,12 +404,12 @@ struct EventStartScanOp
 {
     __device__ T operator()(T elem)
     {
-        return elem ^ 1;
+        return elem; // ^ 1;
     }
 
     __device__ __host__ T GetNeutral(void)
     {
-        return 1;
+        return 0; //1
     }
 };
 
@@ -476,7 +476,7 @@ protected:
     nutty::DeviceBuffer<CTreal3> m_orginalVertices;
     nutty::DeviceBuffer<CTreal3> m_currentTransformedVertices;
 
-    nutty::DeviceBuffer<CTreal3> m_kdPrimitives;
+    //nutty::DeviceBuffer<CTreal3> m_kdPrimitives;
 
     nutty::DeviceBuffer<CTreal3> m_bboxMin;
     nutty::DeviceBuffer<CTreal3> m_bboxMax;
@@ -642,12 +642,14 @@ struct cuConstClipMask
     const CTreal* __restrict newSplit;
     const CTuint* __restrict index;
     const CTuint* __restrict scanned;
+    CTuint* elemsPerTile;
 };
 
 struct cuClipMaskArray
 {
     cuClipMask mask[3];
     CTuint* scanned[3];
+    CTuint* elemsPerTile[3];
 };
 
 struct ClipMask
@@ -655,6 +657,8 @@ struct ClipMask
     nutty::DeviceBuffer<CTclipMask_t> mask[3];
     nutty::DeviceBuffer<CTuint> scannedMask[3];
     nutty::DeviceBuffer<CTuint> scannedSums[3];
+
+    nutty::DeviceBuffer<CTuint> elemsPerTile[3];
 
     //nutty::DeviceBuffer<CTbyte3> mask3;
     nutty::DeviceBuffer<CTreal> newSplits[3];
@@ -672,6 +676,8 @@ struct ClipMask
         mm.index = index[i].GetConstPointer();
 
         //mm.scanned = maskScanner[i].GetPrefixSum().GetConstPointer();
+
+        mm.elemsPerTile = elemsPerTile[i].GetPointer();
 
         mm.scanned = scannedMask[i].GetConstPointer();
     }
@@ -697,6 +703,10 @@ struct ClipMask
         mm.scanned[0] = scannedMask[0].GetPointer();
         mm.scanned[1] = scannedMask[1].GetPointer();
         mm.scanned[2] = scannedMask[2].GetPointer();
+
+        mm.elemsPerTile[0] = elemsPerTile[0].GetPointer();
+        mm.elemsPerTile[1] = elemsPerTile[1].GetPointer();
+        mm.elemsPerTile[2] = elemsPerTile[2].GetPointer();
     }
 
     void Resize(size_t size, cudaStream_t pStream);
@@ -713,7 +723,7 @@ struct cuEventLine
     BBox* ranges;
     CTeventMask_t* mask;
 
-    const CTuint* __restrict scannedEventTypeEndMask;
+    const CTuint* __restrict scannedEventTypeStartMask;
 };
 
 struct cuConstEventLine
@@ -725,12 +735,16 @@ struct cuConstEventLine
     const BBox* __restrict ranges;
     const CTeventMask_t* __restrict mask;
 
-    const CTuint* __restrict scannedEventTypeEndMask;
+    const CTuint* __restrict scannedEventTypeStartMask;
 };
 
 struct EventLine
 {
     DoubleBuffer<IndexedEvent> indexedEvent;
+
+    thrust::device_vector<float>* rawEvents;
+    thrust::device_vector<unsigned int>* eventKeys;
+
     DoubleBuffer<CTeventType_t> type;
     DoubleBuffer<CTuint> primId;
     DoubleBuffer<BBox> ranges;
@@ -738,89 +752,36 @@ struct EventLine
     nutty::Scanner typeStartScanner;
     nutty::DeviceBuffer<CTuint> typeStartScanned;
     nutty::Scanner eventScanner;
-    nutty::DeviceBuffer<CTuint> scannedEventTypeEndMask;
-    nutty::DeviceBuffer<CTuint> scannedEventTypeEndMaskSums;
+    nutty::DeviceBuffer<CTuint> scannedEventTypeStartMask;
+    nutty::DeviceBuffer<CTuint> scannedEventTypeStartMaskSums;
     nutty::DeviceBuffer<CTeventMask_t> mask;
 
     CTbyte toggleIndex;
 
     DoubleBuffer<CTuint>* nodeIndex;
 
-    EventLine(void) : toggleIndex(0), nodeIndex(NULL)
-    {
-
-    }
+    EventLine(void);
 
     void SetNodeIndexBuffer(DoubleBuffer<CTuint>* nodeIndex_)
     {
         nodeIndex = nodeIndex_;
     }
 
-    void Resize(CTuint size)
-    {
-        if(indexedEvent.Size() >= size)
-        {
-            return;
-        }
-        size = (CTuint)(1.2 * size);
-        typeStartScanned.Resize(size);
-        scannedEventTypeEndMask.Resize(size);
-        scannedEventTypeEndMaskSums.Resize(size);
-        eventScanner.Resize(size);
-        typeStartScanner.Resize(size);
-        mask.Resize(size);
+    void Resize(CTuint size);
 
-        indexedEvent.Resize(size);
-        type.Resize(size);
-        nodeIndex->Resize(size);
-        primId.Resize(size);
-        ranges.Resize(size);
-    }
+    size_t Size(void);
 
-    size_t Size(void)
-    {
-        return indexedEvent.Size();
-    }
+    cuEventLine GetPtr(CTbyte index);
 
-    cuEventLine GetPtr(CTbyte index)
-    {
-        cuEventLine events;
-        events.indexedEvent = indexedEvent.Begin(index)();
-        events.type = type.Begin(index)();
-        events.nodeIndex = nodeIndex->Begin(index)();
-        events.primId = primId.Begin(index)();
-        events.ranges = ranges.Begin(index)();
-        events.mask = mask.GetPointer();
-
-        //events.scannedEventTypeStartMask = typeStartScanner.GetPrefixSum().GetConstPointer();
-        events.scannedEventTypeEndMask = typeStartScanned.GetConstPointer();
-        //events.scannedEventTypeEndMask = scannedEventTypeEndMask.Begin()();
-
-        return events;
-    }
-
-    cuConstEventLine GetConstPtr(CTbyte index)
-    {
-        cuConstEventLine events;
-        events.indexedEvent = indexedEvent.Begin(index)();
-        events.type = type.Begin(index)();
-        events.nodeIndex = nodeIndex->Begin(index)();
-        events.primId = primId.Begin(index)();
-        events.ranges = ranges.Begin(index)();
-        events.mask = mask.GetPointer();
-
-        //events.scannedEventTypeStartMask = typeStartScanner.GetPrefixSum().GetConstPointer();
-        events.scannedEventTypeEndMask = typeStartScanned.GetConstPointer();
-        //events.scannedEventTypeEndMask = scannedEventTypeEndMask.Begin()();
-
-        return events;
-    }
+    cuConstEventLine GetConstPtr(CTbyte index);
 
     void ScanEventTypes(CTuint eventCount);
 
     void ScanEvents(CTuint eventCount);
 
     void CompactClippedEvents(CTuint eventCount);
+
+    ~EventLine(void);
 };
 
 struct EventLines
@@ -1016,7 +977,7 @@ public:
 class cuKDTreeScan : public cuKDTree
 {
 private:
-
+    nutty::cuStream m_compactStreams[5];
     void ClearBuffer(void);
     void GrowSplitMemory(CTuint size);
     void GrowNodeMemory(void);
@@ -1065,7 +1026,7 @@ private:
     //EventLine m_events3[3];
     EventLines m_eventLines;
 
-    nutty::DeviceBuffer<CTnodeIsLeaf_t> m_eventIsLeaf;
+    nutty::DeviceBuffer<CTeventIsLeaf_t> m_eventIsLeaf;
 
     nutty::DeviceBuffer<CTuint> m_eventIsLeafScanned;
     nutty::DeviceBuffer<CTuint> m_eventIsLeafScannedSums;

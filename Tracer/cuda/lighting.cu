@@ -4,6 +4,12 @@
 #include <cutil_math.h>
 #include "material.cuh"
 
+extern "C" __device__ float3 directionLighting(const float3& lightDir, const float3& normal)
+{
+    float d = getGlobalIllum() * (0.5 + 0.5 * saturate(dot(normalize(make_float3(-lightDir.x, -lightDir.y, -lightDir.z)), normalize(normal))));
+    return make_float3(d,d,d);
+}
+
 extern "C"__device__ float3 phongLighting(const float3& eye, const float3& world, const float3& lightPos, const float3& normal, const Material* material) 
 {
     float3 posToEye = normalize(eye - world);

@@ -131,6 +131,11 @@ TextureData GetTextureData(const char* file, FREE_IMAGE_FORMAT format, int flags
     return td;
 }
 
+extern "C" TextureData GetTextureTGAData(const char* file)
+{
+    return GetTextureData(file, FIF_TARGA, TARGA_DEFAULT);
+}
+
 extern "C" TextureData GetTexturePNGData(const char* file)
 {
     return GetTextureData(file, FIF_PNG, PNG_DEFAULT);

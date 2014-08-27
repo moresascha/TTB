@@ -43,8 +43,8 @@ public:
     void BeginDraw(void)
     {
         m_pProg->Bind();
-        SetDrawColor(0.025f,0.1f,0.025f);
-        srand(0);
+        SetDrawColor(0.025f,0.1f,0.025f); //green
+        //SetDrawColor(0.1f,0.1f,0.025f); //yellow
     }
 
     void ResetGeometry(void)
