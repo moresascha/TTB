@@ -7,6 +7,103 @@
 #include <sstream>
 #include <assert.h>
 
+template<typename V>
+void SeriaizeVector(V& v, size_t elemSize, std::ofstream& ostream)
+{
+    size_t size = v.size();
+    ostream.write((char*)&size, sizeof(size_t));
+    if(size)
+    {
+        ostream.write((char*)&v[0], elemSize * size); 
+    }
+}
+
+template<typename T, typename V>
+void DeSeriaizeVector(V& v, std::ifstream& istream)
+{
+    size_t size;
+    istream.read((char*)&size, sizeof(size_t));
+    v.resize(size);
+
+    T* bytes = new T[size];
+
+    istream.read((char*)bytes, sizeof(T) * size);
+
+    v.assign(bytes, bytes + size);
+}
+
+void Serialize(const RawTriangles* data, const char* fileName)
+{
+    std::ofstream ostream(std::string(fileName) + std::string(".idk"), std::ios::binary);
+    SeriaizeVector(data->positions, sizeof(Position), ostream);
+
+    //SeriaizeVector(data->intervals, sizeof(IndexBufferInterval), ostream);
+    ostream.write((char*)&data->intervals[0].start, sizeof(int));
+    ostream.write((char*)&data->intervals[0].end, sizeof(int));
+
+    size_t size = data->materials.size();
+    ostream.write((char*)(&size), data->materials.size() * sizeof(size_t));
+    for(auto it = data->materials.begin(); it != data->materials.end(); ++it)
+    {
+        const RawMaterial& mat = it->second;
+        ostream.write((char*)&mat.alpha, sizeof(float));
+        ostream.write((char*)&mat.ambientI, sizeof(float3));
+        ostream.write((char*)&mat.diffuseI, sizeof(float3));
+        ostream.write((char*)&mat.fresnel_r, sizeof(float));
+        ostream.write((char*)&mat.fresnel_t, sizeof(float));
+        ostream.write((char*)&mat.ior, sizeof(float));
+        ostream.write((char*)&mat.mirror, sizeof(bool));
+        ostream.write((char*)&mat.reflectivity, sizeof(float));
+        ostream.write((char*)&mat.specularExp, sizeof(float));
+        ostream.write((char*)&mat.specularI, sizeof(float3));
+    }
+
+    SeriaizeVector(data->tcoords, sizeof(TexCoord), ostream);
+    SeriaizeVector(data->normals, sizeof(Normal), ostream);
+    ostream.close();
+}
+
+void DeSerialize(RawTriangles* data, const char* fileName)
+{
+    std::ifstream istream(fileName, std::ios::binary);
+    DeSeriaizeVector<Position>(data->positions, istream);
+    //DeSeriaizeVector<IndexBufferInterval>(data->intervals, istream);
+
+    data->intervals.resize(1);
+
+    istream.read((char*)&data->intervals[0].start, sizeof(int));
+    istream.read((char*)&data->intervals[0].end, sizeof(int));
+
+    size_t matCount;
+    istream.read((char*)(&matCount), sizeof(size_t));
+
+    for(int i = 0; i < matCount; ++i)
+    {
+        std::stringstream ss;
+        ss << "mat_" << i;
+
+        RawMaterial mat;
+        mat.texFile = ss.str();
+
+        istream.read((char*)&mat.alpha, sizeof(float));
+        istream.read((char*)&mat.ambientI, sizeof(float3));
+        istream.read((char*)&mat.diffuseI, sizeof(float3));
+        istream.read((char*)&mat.fresnel_r, sizeof(float));
+        istream.read((char*)&mat.fresnel_t, sizeof(float));
+        istream.read((char*)&mat.ior, sizeof(float));
+        istream.read((char*)&mat.mirror, sizeof(bool));
+        istream.read((char*)&mat.reflectivity, sizeof(float));
+        istream.read((char*)&mat.specularExp, sizeof(float));
+        istream.read((char*)&mat.specularI, sizeof(float3));
+
+        data->materials.insert(std::pair<std::string, RawMaterial>(ss.str(), mat));
+        data->intervals[0].material = ss.str();
+    }
+    DeSeriaizeVector<TexCoord>(data->tcoords, istream);
+    DeSeriaizeVector<Normal>(data->normals, istream);
+    istream.close();
+}
+
 extern "C" bool FindFilePath(const char* fileName, std::string& path, std::string* _dir/* = NULL */)
 {
     std::string dir;
@@ -144,6 +241,25 @@ extern "C" TextureData GetTexturePNGData(const char* file)
 extern "C" TextureData GetTextureJPGData(const char* file)
 {
     return GetTextureData(file, FIF_JPEG, JPEG_DEFAULT);
+}
+
+extern "C" void WritePNGFile(float4* data, uint w, uint h, const char* fileName)
+{
+    FIBITMAP* img = FreeImage_Allocate(w, h, 24);
+    RGBQUAD color;
+    for(int i=w-1; i>=0; --i)
+    {
+         for(int j=0;j<h;j++)
+         {
+             int add = j + w * i;
+             color.rgbRed=(BYTE) min(255, ((255)*data[add].x));
+             color.rgbGreen=(BYTE) min(255, ((255)*data[add].y));
+             color.rgbBlue=(BYTE) min(255, ((255)*data[add].z));
+             FreeImage_SetPixelColor(img,j,i,&color);
+         }
+    }
+
+    FreeImage_Save(FIF_PNG, img, fileName);
 }
 
 int GetMaterial(const char* file, std::map<std::string, RawMaterial>& mats)

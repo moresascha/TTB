@@ -49,10 +49,11 @@ void PrintBuffer(const Buffer& buffer, size_t max, const char* trim)
     std::stringstream ss;
     for(CTuint i = 0; i < min(max, buffer.Size()); ++i)
     {
+        ss.str("");
         ss << buffer[i] << "[" << i << "]"  << " " << trim;
+        OutputDebugStringA(ss.str().c_str());
     }
-    ss << "\n";
-    OutputDebugStringA(ss.str().c_str());
+    OutputDebugStringA("\n");
 }
 
 template <

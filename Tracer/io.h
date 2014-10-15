@@ -31,6 +31,8 @@ struct RawMaterial
 
 struct IndexBufferInterval
 {
+    IndexBufferInterval(void) { }
+
     IndexBufferInterval(int s, int e, std::string& mat)
     {
         material = mat;
@@ -72,6 +74,10 @@ struct RawTriangles
     }
 };
 
+void Serialize(const RawTriangles* data, const char* fileName);
+
+void DeSerialize(RawTriangles* data, const char* fileName);
+
 extern "C" bool FindFilePath(const char* fileName, std::string& path, std::string* dir = NULL);
 
 extern "C" TextureData GetTextureJPGData(const char* file);
@@ -81,6 +87,8 @@ extern "C" TextureData GetTexturePNGData(const char* file);
 extern "C" TextureData GetTextureTGAData(const char* file);
 
 extern "C" int ReadTextFile(const char* file, std::string& dst);
+
+extern "C" void WritePNGFile(float4* data, uint w, uint h, const char* fileName);
 
 extern "C" int ReadObjFile(const char* file, RawTriangles& tries);
 

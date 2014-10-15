@@ -45,6 +45,7 @@ public:
         m_pProg->Bind();
         SetDrawColor(0.025f,0.1f,0.025f); //green
         //SetDrawColor(0.1f,0.1f,0.025f); //yellow
+        //SetDrawColor(1,1,1); //green
     }
 
     void ResetGeometry(void)

@@ -16,6 +16,13 @@ struct _RT_Light
 
 typedef _RT_Light* RT_Light_t;
 
+
+extern "C" float4* RT_GetRawColors
+    (
+    CTuint* width,
+    CTuint* height
+    );
+
 extern "C" void RT_BindTextureAtlas(const cudaArray_t array);
 
 extern "C" void RT_Init(unsigned int width, unsigned int height);

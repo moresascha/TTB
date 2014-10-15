@@ -117,11 +117,12 @@ __forceinline __device__ void* cuDeviceHeap::Alloc(CTuint id, size_t size)
         }
         return ptr;
     }
-
+#if __CUDA_ARCH__ > 300
     if(cudaMalloc(&ptr, size * sizeof(CTbyte)) != cudaSuccess)
     {
         return (void*)0;
     }
+#endif
     m_pDeviceMemoryPtrs[id] = ptr;
     m_pDeviceSizes[id] = size;
     return ptr;

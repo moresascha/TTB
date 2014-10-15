@@ -16,4 +16,4 @@ public:
     virtual ~IScene(void) { }
 };
 
-IScene* RT_CreateExampleScene(int screenW, int screenH);
+IScene* RT_CreateExampleScene(int tW, int tH, int screenW, int screenH);

@@ -53,7 +53,7 @@ __global__ void getHDValues(float4* colors, float4* hd, cudaSurfaceObject_t surf
 
     float4 color = colors[id];
 
-    float L = 0.0000001 + 0.27 * color.x + 0.67 * color.y + 0.06 * color.z;
+    float L = 0.1 + 0.27 * color.x + 0.67 * color.y + 0.06 * color.z;
 
     logLuminance[id] = log(L);
 
@@ -76,19 +76,19 @@ __global__ void addHDValues(float4* finalColor, cudaTextureObject_t hdBlur, floa
     if(id >= N) return;
 
     float4 color = rawColors[id];
-    
+    float logSum = logAverageLuminace[0];
     float lumi = 0.27*color.x + 0.67*color.y + 0.06*color.z;
-    float Lw = exp(1.0f / logAverageLuminace[0]) / (float)N;
+    float Lw = exp(1.0f / logSum) / (float)N;
     
-    float key = 0.1;
+    float key = 0.75;
     lumi = key * lumi / Lw;
 
     float lumiScaled = lumi / (1 + lumi);
 
     float4 blur = tex2D<float4>(hdBlur, idx / (float)width, idy / (float)height);
 
-    color += blur;
-    color = color * lumiScaled;
+    //color += blur;
+    color = color;// * lumiScaled;
 
     finalColor[id] = color;
 }

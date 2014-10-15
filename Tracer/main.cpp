@@ -104,11 +104,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
 // #define _CRTDBG_MAP_ALLOC
 //     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_CHECK_CRT_DF | _CRTDBG_DELAY_FREE_MEM_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_EVERY_16_DF);
 // #endif
-
-    int width = 1024;//(1024 * 3) / 2;
-    int height = 768;//(512 * 3) / 2;
+    int glWindowsWidth = 1024;
+    int glWindowsHeight = 768;
+    int width = 1024;//2048+768+64;//(1024 * 3) / 2;
+    int height = 768;//2048+768+64;//(512 * 3) / 2;
     TCHAR* clazz = L"TC";
-    HWND hwnd = CreateScreen(hInstance, WndProc, clazz, L"", width, height);
+    HWND hwnd = CreateScreen(hInstance, WndProc, clazz, L"", glWindowsWidth, glWindowsHeight);
 
     RECT rect;
     GetClientRect(hwnd, &rect);
@@ -118,6 +119,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     {
         return -1;
     }
+    //SetWindowLong(hwnd, GWL_STYLE, 0);
+
+    g_currentScene = RT_CreateExampleScene(width, height, glWindowsWidth, glWindowsHeight);
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
@@ -131,8 +135,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR str, int 
     glDisable(GL_CULL_FACE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     SwapBuffers(hDC);
-
-    g_currentScene = RT_CreateExampleScene(width, height);
 
     //g_currentScene->OnResize(width, height);
 

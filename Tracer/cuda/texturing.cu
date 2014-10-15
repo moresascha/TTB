@@ -35,6 +35,12 @@ texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex15;
 texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex16;
 texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex17;
 texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex18;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex19;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex20;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex21;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex22;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex23;
+texture<uchar4, cudaTextureType2D, cudaReadModeNormalizedFloat> g_tex24;
 
 extern "C" __device__ float4 readTexture(uint slot, const Real2& tc) 
 {
@@ -61,6 +67,12 @@ extern "C" __device__ float4 readTexture(uint slot, const Real2& tc)
     if(slot == 16) return tex2D(g_tex16, tc.x, tc.y);
     if(slot == 17) return tex2D(g_tex17, tc.x, tc.y);
     if(slot == 18) return tex2D(g_tex18, tc.x, tc.y);
+    if(slot == 19) return tex2D(g_tex19, tc.x, tc.y);
+    if(slot == 20) return tex2D(g_tex20, tc.x, tc.y);
+    if(slot == 21) return tex2D(g_tex21, tc.x, tc.y);
+    if(slot == 22) return tex2D(g_tex22, tc.x, tc.y);
+    if(slot == 23) return tex2D(g_tex23, tc.x, tc.y);
+    if(slot == 24) return tex2D(g_tex24, tc.x, tc.y);
 #endif
     return make_float4(1,0,0,0);
 }
@@ -80,13 +92,18 @@ extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size)
 #else
 
      cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uchar4>();
-
+     std::stringstream ss;
+     ss << size;
+     OutputDebugStringA("TextureCount=");
+     OutputDebugStringA(ss.str().c_str());
+     OutputDebugStringA("\n");
      for(int i = 0; i < size; ++i)
      {
          switch(i)
          {
              ADD_TEXTURE_SLOT_CASE(0);
              ADD_TEXTURE_SLOT_CASE(1);
+             ADD_TEXTURE_SLOT_CASE(2);
              ADD_TEXTURE_SLOT_CASE(3);
              ADD_TEXTURE_SLOT_CASE(4);
              ADD_TEXTURE_SLOT_CASE(5);
@@ -103,6 +120,12 @@ extern "C" void RT_BindTextures(const cuTextureObj* textures, uint size)
              ADD_TEXTURE_SLOT_CASE(16);
              ADD_TEXTURE_SLOT_CASE(17);
              ADD_TEXTURE_SLOT_CASE(18);
+             ADD_TEXTURE_SLOT_CASE(19);
+             ADD_TEXTURE_SLOT_CASE(20);
+             ADD_TEXTURE_SLOT_CASE(21);
+             ADD_TEXTURE_SLOT_CASE(22);
+             ADD_TEXTURE_SLOT_CASE(23);
+             ADD_TEXTURE_SLOT_CASE(24);
          }
      }
 #endif

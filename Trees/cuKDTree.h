@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef _DEBUG
+#define NUTTY_DEBUG
+#endif
+#undef NUTTY_DEBUG
+
 #include "tree.h"
 #include <Nutty.h>
 #include "geometry.h"
@@ -356,7 +361,7 @@ struct float3max
 
 struct ReduceBBox
 {
-    __device__  BBox operator()(const BBox& t0, const BBox& t1)
+    __forceinline__ __device__  BBox operator()(const BBox& t0, const BBox& t1)
     {
         BBox bbox;
         bbox.m_min = fminf(t0.m_min, t1.m_min);
@@ -400,6 +405,22 @@ struct TypeOp
 template <
     typename T
 >
+struct IsLeafOP
+{
+    __device__ CTuint operator()(T elem)
+    {
+        return elem > 0;
+    }
+
+    __device__ __host__ CTuint GetNeutral(void)
+    {
+        return 0;
+    }
+};
+
+template <
+    typename T
+>
 struct EventStartScanOp
 {
     __device__ T operator()(T elem)
@@ -426,6 +447,19 @@ struct ClipMaskPrefixSumOP
     }
 };
 
+struct ClipMaskIsOverlappingOP
+{
+    __device__ CTuint operator()(CTbyte elem)
+    {
+        return isOLappin(elem) ? 1 : 0;
+    }
+
+    __device__ __host__ CTuint GetNeutral(void)
+    {
+        return 0;
+    }
+};
+
 template <
     typename T
 >
@@ -444,7 +478,7 @@ struct EventEndScanOp
 
 struct EventSort
 {
-    __device__ char operator()(IndexedEvent t0, IndexedEvent t1)
+    __forceinline__ __device__ char operator()(IndexedEvent t0, IndexedEvent t1)
     {
         return t0.v > t1.v;
     }
@@ -452,7 +486,7 @@ struct EventSort
 
 struct ReduceIndexedSplit
 {
-    __device__ __host__ IndexedSAHSplit operator()(IndexedSAHSplit t0, IndexedSAHSplit t1)
+    __forceinline__ __device__ __host__ IndexedSAHSplit operator()(IndexedSAHSplit t0, IndexedSAHSplit t1)
     {
         return t0.sah < t1.sah ? t0 : t1;
     }
@@ -657,6 +691,9 @@ struct ClipMask
     nutty::DeviceBuffer<CTclipMask_t> mask[3];
     nutty::DeviceBuffer<CTuint> scannedMask[3];
     nutty::DeviceBuffer<CTuint> scannedSums[3];
+
+    nutty::DeviceBuffer<CTuint> scannedOverlappingMasks[3];
+    nutty::DeviceBuffer<CTuint> scannedOverlappingSums[3];
 
     nutty::DeviceBuffer<CTuint> elemsPerTile[3];
 
@@ -881,6 +918,9 @@ struct dpClipMask
 
 struct dpEventLine
 {
+    thrust::device_vector<float>* rawEvents;
+    thrust::device_vector<unsigned int>* eventKeys;
+
     DoubleBuffer<IndexedEvent> indexedEvent;
     DoubleBuffer<CTeventType_t> type;
     DoubleBuffer<CTuint> primId;
@@ -893,17 +933,11 @@ struct dpEventLine
 
     CTbyte toggleIndex;
 
-    dpEventLine(void)
-    {
-
-    }
-
     cuEventLine GetPtr(CTbyte index);
 
-    ~dpEventLine(void)
-    {
+    dpEventLine(void);
 
-    }
+    ~dpEventLine(void);
 
     void Resize(size_t newSize);
 };
@@ -983,6 +1017,8 @@ private:
     void GrowNodeMemory(void);
     void GrowPerLevelNodeMemory(CTuint newSize);
     void InitBuffer(void);
+
+    void SetHCDepth(CTuint d);
 
     void PrintStatus(const char* msg = NULL);
 

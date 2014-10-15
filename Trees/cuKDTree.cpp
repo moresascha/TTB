@@ -235,7 +235,7 @@ CT_RESULT cuKDTree::AddGeometryFromLinearMemory(const void* memory, CTuint eleme
     range.start = (CTuint)m_orginalVertices.Size();
     range.end = range.start + elements;
 
-    nutty::HostPtr<const float3> h_p = nutty::HostPtr_Cast<const float3>(memory);    
+    nutty::HostPtr<const float3> h_p = nutty::HostPtr_Cast<const float3>(memory);
     m_orginalVertices.PushBack(h_p, elements);
     m_currentTransformedVertices.PushBack(h_p, elements);
 

@@ -99,6 +99,9 @@
     <ClInclude Include="generic_kernel.h">
       <Filter>Source Files\tree_imps</Filter>
     </ClInclude>
+    <ClInclude Include="nopt_reduce.h">
+      <Filter>Source Files\tree_imps</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ct.cpp">

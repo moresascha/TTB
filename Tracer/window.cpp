@@ -5,8 +5,9 @@
 
 extern "C" HWND CreateScreen(HINSTANCE hInstance, WNDPROC WndProc, TCHAR szWindowClass[], TCHAR szTitle[], int width, int height)
 {
+    DWORD style = WS_OVERLAPPEDWINDOW;
     RECT rec = {0,0, width, height};
-    AdjustWindowRect(&rec, WS_OVERLAPPEDWINDOW, false);
+    AdjustWindowRect(&rec, style, false);
 
     width = rec.right - rec.left;
     height = rec.bottom - rec.top;
@@ -26,7 +27,7 @@ extern "C" HWND CreateScreen(HINSTANCE hInstance, WNDPROC WndProc, TCHAR szWindo
         0, 
         szWindowClass, 
         szTitle, 
-        WS_OVERLAPPEDWINDOW,
+        style,
         0, 
         0, 
         width, 

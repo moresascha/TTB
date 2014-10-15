@@ -29,7 +29,7 @@
 #include "tracer_api.cuh"
 #include "post_processing.cuh"
 
-#define MEASURING
+#undef MEASURING
 
 struct SurfaceObject
 {
@@ -216,7 +216,13 @@ extern "C" __device__ Real3 getSunPos(void)
 #define COMPUTE_SHADOW
 #define COMPUTE_REFRACTION
 #define RECURSION 1
-#define MAX_RECURSION 6
+
+#ifdef MEASURING
+#define MAX_RECURSION 1
+#else
+#define MAX_RECURSION 5
+#endif
+
 #define RAY_WEIGHT_THRESHOLD 0.01
 
 #define AIR_RI 1.00029
@@ -625,7 +631,9 @@ __global__ void _traceRays(
 
                 if(abs(dot(refraction, refraction)) > 0)
                 {
-                    r.rayWeight = ratio * (1 - mat.alpha()) * mat.reflectivity();
+                    //Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
+                    Real3 reflection = reflect(r.getDir(), normal);
+                    r.rayWeight = (1 - mat.alpha()) * ratio * weight * mat.reflectivity();// * (1 - mat.alpha()) * mat.reflectivity();
                     r.setDir(refraction);
                     r.setOrigin(hitPos + (hitRes.isBackFace ? +RAY_HIT_NORMAL_DELTA * normal : -RAY_HIT_NORMAL_DELTA * normal));
                     r.clampToBBox();
@@ -681,7 +689,7 @@ __global__ void _traceRays(
 
                     if(hitRes.isHit)
                     {
-                        float in = max(0, 1-distSquared / (light.intensity.y * light.intensity.y));
+                        float in = fmaxf(0, 1-distSquared / (light.intensity.y * light.intensity.y));
                         Material mat = g_geometry.getMaterial(hitRes.triIndex);
                         c *= lerp(1.0f, 1 - 0.5 * shadowScale * in, mat.alpha());
                     }
@@ -703,135 +711,6 @@ __global__ void _traceRays(
     }
 }
 
-template < 
-    uint width
->
-__device__ int __2DblockScan(uint* sums, int value, uint threadId)
-{
-    int warp_id = threadId / warpSize;
-    int lane_id = threadId & (warpSize-1);
-#pragma unroll
-    for (uint i=1; i<width; i*=2)
-    {
-        int n = __shfl_up(value, i, width);
-
-        if (lane_id >= i) value += n;
-    }
-
-    // value now holds the scan value for the individual thread
-    // next sum the largest values for each warp
-
-    // write the sum of the warp to smem
-    if (threadId % warpSize == warpSize-1)
-    {
-        sums[warp_id] = value;
-    }
-
-    __syncthreads();
-
-    //
-    // scan sum the warp sums
-    // the same shfl scan operation, but performed on warp sums
-    //
-    if (warp_id == 0)
-    {
-        int warp_sum = sums[lane_id];
-
-        for (int i=1; i<width; i*=2)
-        {
-            int n = __shfl_up(warp_sum, i, width);
-
-            if (__laneid() >= i) warp_sum += n;
-        }
-
-        sums[lane_id] = warp_sum;
-    }
-
-    __syncthreads();
-
-    int blockSum = 0;
-
-    if (warp_id > 0)
-    {
-        blockSum = sums[warp_id-1];
-    }
-
-    value += blockSum;
-
-    return value;
-}
-
-template<uint blockSize>
-__global__ void __dpTraceRays(Ray* inputRays, float4* color, uint width, uint N, uint depth)
-{
-    __shared__ uint shrdScanned[blockSize];
-
-    Ray r;
-
-    uint mask = 0;
-    if(threadIdx.x < N)
-    {
-        r = inputRays[threadIdx.x];
-
-        uint id = r.screenCoord.y * width + r.screenCoord.x;
-
-        TraceResult hitRes;
-        traverse(g_tree, r.getOrigin(), r.getDir(), hitRes, *r.getMin(), *r.getMax(), cull_back);
-        
-        if(hitRes.isHit)
-        {
-            Material mat = g_geometry.getMaterial(hitRes.triIndex); 
-
-            shade(hitRes, id, color, r, mat);
-
-            Real3 hitPos = g_geometry.getTrianglelHitPos(hitRes.triIndex, hitRes.bary);
-            Real3 normal = g_geometry.getTrianglelNormal(hitRes.triIndex, hitRes.bary);
-
-            bool isTrans = mat.isTransp();
-            bool isMirror = mat.isMirror();
-
-            Real3 dir = r.getDir();
-            Real weight = r.rayWeight;
-
-            if(isMirror)
-            {
-                Real ratio = Reflectance(r.getDir(), normal, AIR_RI, mat.reflectionIndex(), mat.fresnel_r());
-                Real3 reflection = reflect(r.getDir(), normal);
-                r.rayWeight = ratio * weight * mat.reflectivity();
-                r.setDir(reflection);
-                r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
-                r.clampToBBox();
-                //addRay(newReflectionRays, rayIndex, r);
-                mask = 1;
-            }
-        }
-    }
-
-    if(depth == 1)
-    {
-        return;
-    }
-
-    __syncthreads();
-
-    uint sum = __2DblockScan<blockSize>(shrdScanned, mask, threadIdx.x);
-
-    __syncthreads();
-
-    if(mask)
-    {
-        inputRays[sum - mask] = r;
-    }
-
-     __syncthreads();
-
-    if(threadIdx.x == blockSize-1)
-    {
-        const uint block = blockSize;
-        //__dpTraceRays<blockSize><<<1, blockSize>>>(inputRays, color, width, sum, depth+1);
-    }
-}
-
 template<uint blockSize>
 __global__ void _dpTraceRays(
     float4* color,
@@ -850,8 +729,6 @@ __global__ void _dpTraceRays(
 
     uint linearBlockThreadId = blockDim.x * threadIdx.y + threadIdx.x;
     uint linearBlock = gridDim.x * blockIdx.y + blockIdx.x;
-
-    __shared__ uint shrdScanned[blockSize];
 
     uint mask = 0;
 
@@ -915,7 +792,7 @@ __global__ void _dpTraceRays(
                     Real3 reflection = reflect(r.getDir(), normal);
                     r.rayWeight = ratio * weight * mat.reflectivity();
                     r.setDir(reflection);
-                    r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
+                    //r.setOrigin(hitPos + RAY_HIT_NORMAL_DELTA * normal);
                     //r.clampToBBox();
                     //addRay(newReflectionRays, rayIndex, r);
                     //mask = 1;
@@ -924,21 +801,22 @@ __global__ void _dpTraceRays(
                     float v = 0.5 - asin(r.dir_max.y) / PI;
                     float2 tc = make_float2(u, 1-v);
                     float4 c  = readTexture(0, tc);
-                    c.x = 0; c.y = 0; c.z = 0;
-                    color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
-                    color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
-                    color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
+                    c*=r.rayWeight;
+                    c.x = 0.5 + .5 * dot(normal, make_real3(0,1,0)); c.y = 0; c.z = 0;
+                    color[id].x = c.x;
+                    color[id].y = c.y;
+                    color[id].z = c.z;
                 }
             }
             else
             {
                 float u = 0.5 + atan2(r.dir_max.z, r.dir_max.x) / (2 * PI);
-                float v = 0.5 - asin(r.dir_max.y) / PI;
-                float2 tc = make_float2(u, 1-v);
+                float v = 1 - (0.5 - asin(r.dir_max.y) / PI);
+                float2 tc = make_float2(u, v);
                 float4 c  = readTexture(0, tc);
-                color[id].x = color[id].x * (1 - r.rayWeight) + c.x;
-                color[id].y = color[id].y * (1 - r.rayWeight) + c.y;
-                color[id].z = color[id].z * (1 - r.rayWeight) + c.z;
+                color[id].x = c.x;
+                color[id].y = c.y;
+                color[id].z = c.z;
             }
         }
     }
@@ -1137,9 +1015,9 @@ extern "C" void RT_Init(unsigned int width, unsigned int height)
     g_refractionRays[1]->Resize(maxRaysPerNode);
     g_refractionRayMask->Resize(maxRaysPerNode);
 
-    g_shadowRays[0]->Resize(maxRaysPerNode);
-    g_shadowRays[1]->Resize(maxRaysPerNode);
-    g_shadowRayMask->Resize(maxRaysPerNode);
+//     g_shadowRays[0]->Resize(maxRaysPerNode);
+//     g_shadowRays[1]->Resize(maxRaysPerNode);
+//     g_shadowRayMask->Resize(maxRaysPerNode);
 
     g_sums->Resize((2 * maxRaysPerNode) / 512);
     g_scannedSums->Resize((2 * maxRaysPerNode) / 512);
@@ -1208,8 +1086,8 @@ extern "C" void RT_Destroy(void)
     delete g_refractionRays[0];
     delete g_refractionRays[1];
 
-    delete g_shadowRays[0];
-    delete g_shadowRays[1];
+//     delete g_shadowRays[0];
+//     delete g_shadowRays[1];
 
     delete g_rayMask;
     delete g_refractionRayMask;
@@ -1236,19 +1114,42 @@ extern "C" uint RT_GetLastRayCount(void)
     return g_lastRays;
 }
 
+__global__ void __spreadScannedSumsSingleT(uint* scanned, const uint* __restrict prefixSum, uint length)
+{
+    uint tileSize = 256;
+    uint id = tileSize + blockIdx.x * blockDim.x + threadIdx.x;
+    if(id >= length)
+    {
+        return;
+    }
+    scanned[id] += prefixSum[id/tileSize];
+}
+
 uint compactRays(nutty::DeviceBuffer<uint>::iterator& maskBegin,
                  nutty::DeviceBuffer<Ray>::iterator& rayDstBegin, 
                  nutty::DeviceBuffer<Ray>::iterator& raySrcBegin, 
-                 uint rayCount)
+                 uint elementCount)
 {
-    nutty::ZeroMem(*g_scannedRayMask);
-    nutty::ZeroMem(*g_sums);
+    cudaMemsetAsync(g_scannedRayMask->GetPointer(), 0, sizeof(uint) * g_scannedRayMask->Size());
 
-    nutty::ExclusivePrefixSumScan(maskBegin, maskBegin + rayCount, g_scannedRayMask->Begin(), g_sums->Begin(), g_scannedSums->Begin());
+    //nutty::ExclusivePrefixSumScan(maskBegin, maskBegin + elementCount, g_scannedRayMask->Begin(), g_sums->Begin(), g_scannedSums->Begin());
 
-    nutty::Compact(rayDstBegin, raySrcBegin, raySrcBegin + rayCount, maskBegin, g_scannedRayMask->Begin(), 0U);
-    auto it = g_scannedRayMask->Begin() + rayCount - 1;
-    return *(g_scannedRayMask->Begin() + rayCount - 1) + *(maskBegin + rayCount - 1);
+    nutty::PrefixSumOp<CTuint> op;
+    const uint BLOCK_SIZE = 256;
+    const uint blockCount = 1;
+    const uint elemsPerThread = 1;// * elemsPerBlock / BLOCK_SIZE;
+    uint grid = nutty::cuda::GetCudaGrid(elementCount, BLOCK_SIZE);
+
+    nutty::PrefixSumOp<uint> _op;
+    __binaryGroupScan<BLOCK_SIZE><<<grid, BLOCK_SIZE>>>((const uint*)maskBegin(), (uint*)g_scannedRayMask->GetPointer(), g_sums->GetPointer(), _op, elementCount);
+     __completeScan<1024><<<1, 1024>>>(g_sums->GetConstPointer(), g_scannedSums->GetPointer(), _op, grid);
+
+    __spreadScannedSumsSingleT<<<grid-1, BLOCK_SIZE>>>(g_scannedRayMask->GetPointer(), g_scannedSums->GetPointer(), elementCount);
+
+    nutty::Compact(rayDstBegin, raySrcBegin, raySrcBegin + elementCount, maskBegin, g_scannedRayMask->Begin(), 0U);
+
+    auto it = g_scannedRayMask->Begin() + elementCount - 1;
+    return *(g_scannedRayMask->Begin() + elementCount - 1) + *(maskBegin + elementCount - 1);
 }
 
 void traceRays(float4* colors, 
@@ -1374,7 +1275,7 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
     computeInitialRays<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_rays[0]->Begin()(), g_rayMask->Begin()(), eye, g_width, g_height, g_width * g_height);
 
     g_lastRays = 0;
-    
+
     traceRays(g_rawColors->GetPointer(), g_recDepth, g_width * g_height, g_width, g_height);
 
 #else
@@ -1399,52 +1300,61 @@ extern "C" void RT_Trace(float4* colors, const float3* view, float3 eye, BBox& b
 
 
 #ifndef MEASURING
-    getHDValues<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_hdColors->GetPointer(), g_surface->surfObj, g_luminance->GetPointer(), g_width * g_height);
-    DEVICE_SYNC_CHECK();
+//     getHDValues<<<g_grid, g_grp>>>(g_rawColors->GetPointer(), g_hdColors->GetPointer(), g_surface->surfObj, g_luminance->GetPointer(), g_width * g_height);
+//     DEVICE_SYNC_CHECK();
+// 
+//     dim3 sdBlock;
+//     sdBlock.x = 16;
+//     sdBlock.y = 16;
+// 
+//     uint blurWidth = g_width / blurLine;
+//     uint blurHeight = g_height / blurLine;
+// 
+//     dim3 sdGrid;
+//     sdGrid.x = nutty::cuda::GetCudaGrid(blurWidth, sdBlock.x);
+//     sdGrid.y = nutty::cuda::GetCudaGrid(blurHeight, sdBlock.y);
+// 
+//     scaleDown<blurLine><<<sdGrid, sdBlock>>>(g_downSampled->GetPointer(), g_surface->surfObj, g_width/blurLine, g_height/blurLine);
+//     DEVICE_SYNC_CHECK();
+// 
+//     dim3 blocks(blurWidth / COLUMNS_BLOCKDIM_X, blurHeight / (COLUMNS_RESULT_STEPS * COLUMNS_BLOCKDIM_Y));
+//     dim3 threads(COLUMNS_BLOCKDIM_X, COLUMNS_BLOCKDIM_Y);
+// 
+//     convolutionColumnsKernel<<<blocks, threads>>>(
+//         g_blurColorsX->GetPointer(),
+//         g_downSampled->GetPointer(),
+//         blurWidth,
+//         blurHeight,
+//         blurWidth
+//     );
+// 
+//     dim3 rowblocks(blurWidth / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), blurHeight / ROWS_BLOCKDIM_Y);
+//     dim3 rowthreads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
+// 
+//     convolutionRowsKernel<<<rowblocks, rowthreads>>>(
+//         g_blurColorsY->GetPointer(),
+//         g_blurColorsX->GetPointer(),
+//         blurWidth,
+//         blurHeight,
+//         blurWidth
+//     );
+// 
+//     cudaMemcpyToArrayAsync(g_blurredImage->cuArray, 0, 0, g_blurColorsY->GetPointer(), g_blurColorsY->Size() * sizeof(float4), cudaMemcpyDeviceToDevice);
 
-    dim3 sdBlock;
-    sdBlock.x = 16;
-    sdBlock.y = 16;
-
-    uint blurWidth = g_width / blurLine;
-    uint blurHeight = g_height / blurLine;
-
-    dim3 sdGrid;
-    sdGrid.x = nutty::cuda::GetCudaGrid(blurWidth, sdBlock.x);
-    sdGrid.y = nutty::cuda::GetCudaGrid(blurHeight, sdBlock.y);
-
-    scaleDown<blurLine><<<sdGrid, sdBlock>>>(g_downSampled->GetPointer(), g_surface->surfObj, g_width/blurLine, g_height/blurLine);
-    DEVICE_SYNC_CHECK();
-
-    dim3 blocks(blurWidth / COLUMNS_BLOCKDIM_X, blurHeight / (COLUMNS_RESULT_STEPS * COLUMNS_BLOCKDIM_Y));
-    dim3 threads(COLUMNS_BLOCKDIM_X, COLUMNS_BLOCKDIM_Y);
-
-    convolutionColumnsKernel<<<blocks, threads>>>(
-        g_blurColorsX->GetPointer(),
-        g_downSampled->GetPointer(),
-        blurWidth,
-        blurHeight,
-        blurWidth
-    );
-
-    dim3 rowblocks(blurWidth / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), blurHeight / ROWS_BLOCKDIM_Y);
-    dim3 rowthreads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
-
-    convolutionRowsKernel<<<rowblocks, rowthreads>>>(
-        g_blurColorsY->GetPointer(),
-        g_blurColorsX->GetPointer(),
-        blurWidth,
-        blurHeight,
-        blurWidth
-    );
-
-    cudaMemcpyToArrayAsync(g_blurredImage->cuArray, 0, 0, g_blurColorsY->GetPointer(), g_blurColorsY->Size() * sizeof(float4), cudaMemcpyDeviceToDevice);
-
-    nutty::Reduce(g_luminance->Begin(), g_luminance->End(), nutty::binary::Plus<float>(), 0.0f);
+    //nutty::Reduce(g_luminance->Begin(), g_luminance->End(), nutty::binary::Plus<float>(), 0.0f);
 
     addHDValues<<<g_grid, g_grp>>>(colors, g_blurredImage->tex, g_rawColors->GetPointer() , g_width * g_height, blurLine, g_width, g_height, g_luminance->GetPointer());
 #endif
+}
 
+extern "C" float4* RT_GetRawColors    (
+    CTuint* width,
+    CTuint* height
+    )
+{
+    *width = g_width;
+    *height = g_height;
+    return g_rawColors->GetPointer();
 }
  
 extern "C" void RT_BindTree(TreeNodes& tree)

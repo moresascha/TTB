@@ -150,10 +150,12 @@ struct cpuTreeNode : public ICTTreeNode
 
     cpuTreeNode(void)
     {
+
     }
 
     cpuTreeNode(const cpuTreeNode&)
     {
+
     }
 
     void Print(void)
@@ -239,18 +241,20 @@ private:
     CTuint m_leafPrimOffset;
     CTbool m_build;
 
-    LinearMemory<CTbyte> m_linearNodeSplitAxis;
-    LinearMemory<CTbyte> m_linearNodeIsLeaf;
+    LinearMemory<CTaxis_t> m_linearNodeSplitAxis;
+    LinearMemory<CTnodeIsLeaf_t> m_linearNodeIsLeaf;
     LinearMemory<CTuint> m_linearNodeToLeafIndex;
     LinearMemory<CTuint> m_linearNodeLeft;
     LinearMemory<CTuint> m_linearNodeRight;
     LinearMemory<CTreal> m_linearNodeSplits;
     LinearMemory<CTuint> m_linearNodePrimCount;
     LinearMemory<CTuint> m_linearNodePrimStartIndex;
+    LinearMemory<_CPU_AABB> m_linearPerNodePrimAABBs;
 
     LinearMemory<cpuTreeNode> m_linearNodeMemory;
     LinearMemory<AABB> m_linearNodeAABBs;
-    LinearMemory<_AABB> m_linearPrimAABBs;
+
+    LinearMemory<_CPU_AABB> m_linearPrimAABBs;
     LinearMemory<CTuint> m_linearPerNodePrimitives;
 
     LinearMemory<CTuint> m_linearPerLeafNodePrimitives;
@@ -259,6 +263,8 @@ private:
 
     LinearMemory<CTuint> m_linearSplitLeft;
     LinearMemory<CTuint> m_linearSplitRight;
+    LinearMemory<_CPU_AABB> m_linearAABBLeft;
+    LinearMemory<_CPU_AABB> m_linearAABBRight;
 
     std::vector<EdgeEvent> m_events; //todo
 

@@ -147,10 +147,11 @@ protected:
     cudaGraphicsResource_t m_res;
     double m_lastTreeBuildTime;
     bool m_updateTreeEachFrame;
+    bool m_animateGeometry;
     float m_envMapScale;
     bool m_drawDebugTree;
     bool m_drawFont;
-
+    Material m_matToPrint;
     int m_handleOffset;
     
     nutty::DeviceBuffer<Normal> m_normalsSave;
@@ -161,13 +162,28 @@ protected:
 
     void DrawText(const char* text, float x, float y);
 
+    void DrawMaterial(Material m_matToPrint)
+    {
+        static std::stringstream ss;
+        ss.str("");
+        ss << "\n\nMirror=" << m_matToPrint.isMirror() << " (1)\n";
+        ss << "Alpha=" << m_matToPrint.alpha() << " (2,3)\n";
+        ss << "Reflectance=" << m_matToPrint.reflectivity() << " (4,5)\n";
+        ss << "Fresnel_R=" << m_matToPrint.fresnel_r() << " (6,7)\n";
+        ss << "Fresnel_T=" << m_matToPrint.fresnel_t() << " (8,9)\n";
+        ss << "IOR=" << m_matToPrint.reflectionIndex() << " (o,p)\n";
+        FontBeginDraw();
+        FontDrawText(ss.str().c_str(), 0.0025f, 0.5);
+        FontEndDraw();
+    }
+
 public:
-    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0), m_drawFont(true)
+    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0), m_drawFont(true), m_animateGeometry(false)
     {
 
     }
 
-    bool Create(int twidth, int theight);
+    bool Create(int twidth, int theight, int width, int height);
 
     CTGeometryHandle AddGeometry(const char* objFile, GeoHandle* geoHandle = NULL);
 
@@ -176,6 +192,8 @@ public:
     void OnResize(int width, int height);
 
     virtual void OnUpdate(float dt);
+
+    virtual void AfterInit(void) { }
 
     virtual void OnKeyUp(int key)
     {
@@ -199,14 +217,12 @@ public:
 
 //implementation
 
-bool BaseScene::Create(int width, int height)
+bool BaseScene::Create(int twidth, int theight, int width, int height)
 {
     m_w = width;
     m_h = height;
-    m_tw = m_w;
-    m_th = m_h;
-    int twidth = m_tw;
-    int theight = m_th;
+    m_tw = twidth;
+    m_th = theight;
 
     assert(FontInit(width, height));
 
@@ -229,7 +245,13 @@ bool BaseScene::Create(int width, int height)
 
     glUniform1i(glGetUniformLocation(m_p->Id(), "sampler"), TEXTURE_SLOT_RT_COLOR_BUFFER);
 
-    glUniform1i(glGetUniformLocation(m_p->Id(), "width"), twidth);
+    glUniform1i(glGetUniformLocation(m_p->Id(), "twidth"), twidth);
+
+    glUniform1i(glGetUniformLocation(m_p->Id(), "theight"), theight);
+
+    glUniform1i(glGetUniformLocation(m_p->Id(), "width"), width);
+
+    glUniform1i(glGetUniformLocation(m_p->Id(), "height"), height);
 
     RT_Init(twidth, theight);
 
@@ -237,17 +259,12 @@ bool BaseScene::Create(int width, int height)
     m_atlas->Init();
 
     std::string texPath;
-    FindFilePath("skydome5.png", texPath);
+    FindFilePath("newhdri_011.jpg", texPath); //
     m_atlas->AddTexture(texPath.c_str());
 
     CT_SAFE_CALL(CTInit(0));
 
-    //   createTestTree(CT_CREATE_TREE_CPU);
-    //   print("\n\n\n");
-    //   createTestTree(CT_CREATE_TREE_GPU);
-
-    //return 0;
-    uint treeType = CT_CREATE_TREE_GPU;
+    uint treeType = CT_CREATE_TREE_GPU;//GPU_DP;
     CT_SAFE_CALL(CTCreateSAHKDTree(&m_tree, treeType));
 
     m_triGPUData = new GPUTraceData();
@@ -283,6 +300,8 @@ bool BaseScene::Create(int width, int height)
 
     RT_SetViewPort(twidth, theight);
 
+    //m_camera.Move(1, 3, -5);
+
     chimera::util::Mat4 matrix;
     chimera::util::Mat4 cameraMatrix;
     float time = 0;
@@ -315,6 +334,8 @@ bool BaseScene::Create(int width, int height)
     traceTimer.VReset();
 
     OnResize(twidth, theight);
+
+    AfterInit();
 
     return true;
 }
@@ -381,7 +402,11 @@ void BaseScene::OnKeyDown(int key)
     else if(key == KEY_P)
     {
         m_updateTreeEachFrame ^= 1;
-    } 
+    }
+    else if(key == KEY_L)
+    {
+        m_animateGeometry ^= 1;
+    }
     else if(key == KEY_K)
     {
         RT_IncDepth();
@@ -408,6 +433,16 @@ void BaseScene::OnKeyDown(int key)
         m_envMapScale += 0.01f;
         RT_EnvMapSale(m_envMapScale);
     }
+    else if(key == KEY_9)
+    {
+        float4* gpuColors;
+        uint h, w;
+        gpuColors = RT_GetRawColors(&h, &w);
+        float4* hData = (float4*)malloc(w * h * sizeof(float4));
+        cudaMemcpy(hData, gpuColors, w * h * sizeof(float4), cudaMemcpyDeviceToHost);
+        WritePNGFile(hData, w, h, "test.png");
+        free(hData);
+    }
 }
 
 CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandle)
@@ -423,15 +458,25 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
     else
     {
         RawTriangles* _cpuTris = new RawTriangles();
-        std::string modelPath;
-        FindFilePath(objFile, modelPath);
         loadTimer.Start();
-        if(!ReadObjFileThreaded(modelPath.c_str(), *_cpuTris))
+
+        std::string str(objFile);
+        if(str[str.size() - 1] == '\k')
         {
-            print("Couldn't load model!\n");
-            return -1;
+            DeSerialize(_cpuTris, objFile);
         }
-        m_modelCache.insert(std::pair<std::string, RawTriangles*>(std::string(objFile), _cpuTris));
+        else
+        {
+            std::string modelPath;
+            FindFilePath(objFile, modelPath);
+            if(!ReadObjFileThreaded(modelPath.c_str(), *_cpuTris))
+            {
+                print("Couldn't load model!\n");
+                return -1;
+            }
+            m_modelCache.insert(std::pair<std::string, RawTriangles*>(std::string(objFile), _cpuTris));
+            Serialize(_cpuTris, objFile);
+        }
         cpuTris = _cpuTris;
     }
 
@@ -464,6 +509,10 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
                 int slot = m_atlas->AddTexture(texPath.c_str());
                 texToSlot[it->second.texFile] = slot;
             }
+            else
+            {
+                print("Texture %s not found\n", it->second.texFile.c_str());
+            }
         }
     }
 
@@ -494,7 +543,6 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
         mat._fresnel_r = cpuMat.fresnel_r;
         mat._fresnel_t = cpuMat.fresnel_t;
         mat._reflectivity = cpuMat.reflectivity;
-
         m_triGPUData->materials.PushBack(mat);
     }
 
@@ -504,25 +552,32 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
 
     for(auto& i = cpuTris->intervals.begin(); i != cpuTris->intervals.end(); ++i)
     {
-        matsIds.reserve(matsIds.size() + i->end - i->start);
+        //matsIds.reserve(matsIds.size() + (i->end - i->start)*3);
         byte matIndex = matOffset + cpuTris->GetMaterialIndex(i->material);
-        ICTGeometry* geo;
-        CTCreateGeometry(&geo);
-        for(int a = i->start; a < i->end; ++a)
-        { 
-            CTTriangle tri;
-            for(int k = 0; k < 3; ++k)
-            {
-                matsIds.push_back(matIndex);
-                CTreal3 pos;
-                Position p = cpuTris->positions[3 * a + k];
-                pos.x = p.x;
-                pos.y = p.y;
-                pos.z = p.z;
-                tri.SetValue(k, pos);
-            }
-            CTAddPrimitive(geo, &tri);
+
+        //matsIds.resize((i->end - i->start)*3);
+        for(int k = 0; k < (i->end - i->start)*3; ++k)
+        {
+            matsIds.push_back(matIndex);
         }
+        //matsIds.insert(matsIds.front(), (i->end - i->start)*3, matIndex);
+
+//         ICTGeometry* geo;
+//         CTCreateGeometry(&geo);
+//         for(int a = i->start; a < i->end; ++a)
+//         {
+//             CTTriangle tri;
+//             for(int k = 0; k < 3; ++k)
+//             {
+//                 CTreal3 pos;
+//                 Position p = cpuTris->positions[3 * a + k];
+//                 pos.x = p.x;
+//                 pos.y = p.y;
+//                 pos.z = p.z;
+//                 tri.SetValue(k, pos);
+//             }
+//             CTAddPrimitive(geo, &tri);
+//         }
 
         CTreal3* ptr = &cpuTris->positions[0];
         CT_SAFE_CALL(CTAddGeometryFromLinearMemory(m_tree, ptr + 3*i->start, 3*(i->end - i->start), &handle));
@@ -542,18 +597,36 @@ CTGeometryHandle BaseScene::AddGeometry(const char* objFile, GeoHandle* geoHandl
     return handle;
 }
 
+#undef GLOBAL_PROFILE
+static uint steps = 0;
+static double g_time = 0;
+
 void BaseScene::UpdateTree(void)
 {
+    CT_TREE_DEVICE type;
+    CT_SAFE_CALL(CTGetTreeDeviceType(m_tree, &type));
+
     chimera::util::HTimer loadTimer;
     {
         print("Building Tree ...\n");
-        cudaStreamSynchronize(m_tree->GetStream());
+        if(type == eCT_GPU) cudaStreamSynchronize(m_tree->GetStream());
         loadTimer.Start();
         CT_SAFE_CALL(CTUpdate(m_tree));
-        cudaStreamSynchronize(m_tree->GetStream());
+        if(type == eCT_GPU) cudaStreamSynchronize(m_tree->GetStream());
         loadTimer.Stop();
         m_lastTreeBuildTime = loadTimer.GetMillis();
         print("Building Tree took '%f' Seconds\n", loadTimer.GetSeconds());
+#ifdef GLOBAL_PROFILE
+        g_time += m_lastTreeBuildTime;
+        if(steps++ == 50)
+        {
+            std::ofstream bench("bench.txt");
+            print("Building Tree took Average '%f' Milliseconds\n", g_time/(double)steps);
+            bench << g_time/(double)steps << "\n";
+            bench.close();
+            exit(0);
+        }
+#endif
     }    
     
     CTuint nodeCount;
@@ -566,8 +639,6 @@ void BaseScene::UpdateTree(void)
     loadTimer.Start();
 
     TreeNodes gpuTree;
-    CT_TREE_DEVICE type;
-    CT_SAFE_CALL(CTGetTreeDeviceType(m_tree, &type));
 
     if(type == eCT_CPU)
     {
@@ -672,12 +743,13 @@ void BaseScene::OnRender(float dt)
     const ICTAABB* aabb;
     CT_SAFE_CALL(CTGetAxisAlignedBB(m_tree, &aabb));
     BBox bbox;
+    bbox.init();
     bbox.addPoint(aabb->GetMin());
     bbox.addPoint(aabb->GetMax());
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSynchronize());
     traceTimer.Start();
-    //RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
+    RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaGraphicsUnmapResources(1, &m_res));
 
@@ -686,11 +758,12 @@ void BaseScene::OnRender(float dt)
     traceTimer.Stop();
 
     m_p->Bind();
-    glViewport(0, 0, twidth, theight);
+    //glViewport(0, 0, twidth, theight);
+    glViewport(0, 0, width, height);
     glBindVertexArray(0);
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
-    glDrawArrays(GL_TRIANGLES, 0, 4);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
 
     if(m_drawDebugTree)
     {
@@ -702,7 +775,6 @@ void BaseScene::OnRender(float dt)
         m_debugLayer->ResetGeometry();
         CT_SAFE_CALL(CTTreeDrawDebug(m_tree, m_debugLayer));
         m_debugLayer->DrawGLGeo();
-
         glDisable(GL_BLEND);
         m_debugLayer->EndDraw();
     }

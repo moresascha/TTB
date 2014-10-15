@@ -259,4 +259,112 @@ struct _AABB
     }
 };
 
+struct _CPU_AABB
+{
+    CTreal3 m_min;
+    CTreal3 m_max;
+
+    void _Shrink(CTbyte axis, CTbyte minMax, float v)
+    {
+        CTreal3& va = minMax ? m_max : m_min;
+        switch(axis)
+        {
+        case 0 : va.x = v; return;
+        case 1 : va.y = v; return;
+        case 2 : va.z = v; return;
+        }
+    }
+
+    __host__ _CPU_AABB(void)
+    {
+        Reset();
+    }
+
+    __host__ _CPU_AABB(const _AABB& aabb)
+    {
+        m_min = aabb.m_min;
+        m_max = aabb.m_max;
+    }
+
+    __host__ _CPU_AABB(const _CPU_AABB& aabb)
+    {
+        m_min = aabb.m_min;
+        m_max = aabb.m_max;
+    }
+
+    void ShrinkMax(byte axis, float v)
+    {
+        _Shrink(axis, 1, v);
+    }
+
+    void ShrinkMin(byte axis, float v)
+    {
+        _Shrink(axis, 0, v);
+    }
+
+    __host__  void Reset(void)
+    {
+        m_min.x = FLT_MAX;
+        m_min.y = FLT_MAX;
+        m_min.z = FLT_MAX;
+
+        m_max.x = -FLT_MAX;
+        m_max.y = -FLT_MAX;
+        m_max.z = -FLT_MAX;
+    }
+
+    __host__ void AddVertex(const CTreal3& p)
+    {
+        m_min.x = fminf(p.x - BB_EPSILON, m_min.x);
+        m_min.y = fminf(p.y - BB_EPSILON, m_min.y);
+        m_min.z = fminf(p.z - BB_EPSILON, m_min.z);
+
+        m_max.x = fmaxf(p.x + BB_EPSILON, m_max.x);
+        m_max.y = fmaxf(p.y + BB_EPSILON, m_max.y);
+        m_max.z = fmaxf(p.z + BB_EPSILON, m_max.z);
+    }
+
+    __host__ CTreal get(byte axis, byte mm) const
+    {
+        switch(mm)
+        {
+        case 0 : return getAxis(m_min, axis);
+        case 1 : return getAxis(m_max, axis);
+        }
+        return 0;
+    }
+
+    __host__  CTreal getX(byte mm) const
+    {
+        return get(0, mm);
+    }
+
+    __host__  CTreal getY(byte mm) const
+    {
+        return get(1, mm);
+    }
+
+    __host__  CTreal getZ(byte mm) const
+    {
+        return get(2, mm);
+    }
+
+    __host__  const CTreal3& GetMin(void) const
+    {
+        return m_min;
+    }
+
+    __host__ const CTreal3& GetMax(void) const
+    {
+        return m_max;
+    }
+
+    __host__ _CPU_AABB& operator=(const _CPU_AABB& cpy)
+    {
+        m_max = cpy.m_max;
+        m_min = cpy.m_min;
+        return *this;
+    }
+};
+
 typedef _AABB BBox;
