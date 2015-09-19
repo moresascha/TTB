@@ -178,7 +178,7 @@ protected:
     }
 
 public:
-    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0), m_drawFont(true), m_animateGeometry(false)
+    BaseScene(void) : keyDown_key(0), m_updateTreeEachFrame(1), m_lastTreeBuildTime(0), m_envMapScale(1), m_drawDebugTree(false), m_handleOffset(0), m_drawFont(false), m_animateGeometry(false)
     {
 
     }
@@ -442,6 +442,11 @@ void BaseScene::OnKeyDown(int key)
         cudaMemcpy(hData, gpuColors, w * h * sizeof(float4), cudaMemcpyDeviceToHost);
         WritePNGFile(hData, w, h, "test.png");
         free(hData);
+    }
+    else if(key == KEY_8)
+    {
+        print("Eye: %.1f %.1f %.1f \n Phi: %.1f Theta: %.1f\n", 
+            m_camera.GetEye().x,m_camera.GetEye().y,m_camera.GetEye().z, m_camera.m_phi, m_camera.m_theta);
     }
 }
 
@@ -749,7 +754,7 @@ void BaseScene::OnRender(float dt)
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaDeviceSynchronize());
     traceTimer.Start();
-    RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
+    //RT_Trace(mappedPtr, m_camera.GetView(), m_camera.GetEye(), bbox);
 
     CUDA_RT_SAFE_CALLING_NO_SYNC(cudaGraphicsUnmapResources(1, &m_res));
 

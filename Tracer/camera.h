@@ -12,11 +12,11 @@ private:
     float4 m_iview[4];
     float4 m_projection[4];
 
-    float m_phi, m_theta;
-
     void ComputeView(void);
 
 public:
+
+    float m_phi, m_theta;
 
     Camera(void)
     {

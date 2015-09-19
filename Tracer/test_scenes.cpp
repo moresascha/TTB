@@ -151,7 +151,8 @@ private:
 public:
     Room(void) : m_animateLight(false)
     {
-        m_camera.SetEyePos(make_float3(5.367411, 5.367411, -15));
+        m_camera.SetEyePos(make_float3(-1.1f, 5.9f, -12.3f ));
+        m_camera.Rotate(0.1f, 0.2f);
         m_animateGeometry = true;
     }
 
@@ -352,7 +353,8 @@ private:
 public:
     BMW(void) : m_animateLight(false)
     {
-        m_camera.SetEyePos(make_float3(5.924796, 2.040130, -4.645228));
+        m_camera.SetEyePos(make_float3(5.4f, 2.8f, -6.5f));
+        m_camera.Rotate(-0.6f, 0.2f);
         //m_camera.LookAt(make_float3(0,5,0), make_float3(0, 2, 10));
         m_updateTreeEachFrame = false;
         m_animateCamera = false;
@@ -465,14 +467,15 @@ IScene* RT_CreateExampleScene(int traceWidth, int traceHeight, int screenW, int 
         "angel.obj.idk" //11
     };
 
-    BaseScene* scene;
-    //scene = new TestObjScene("angel.obj.idk");
-    scene = new Room();
+    BaseScene* scene;    
+    //scene = new Room();
     //scene = new BMW();
-
-//     int width = (1024 * 3) / 2;
-//     int height = (512 * 3) / 2;
-
+    scene = new TestObjScene("angel.obj.idk");
     scene->Create(traceWidth, traceHeight, screenW, screenH);
     return scene;
 }
+
+//bunny 0,037
+//angel 0,199
+//dragon 0,346
+//happy 
